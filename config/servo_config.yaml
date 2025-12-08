@@ -1,0 +1,59 @@
+# Serial port configuration / 串口配置
+serial:
+  baudrate: 1000000
+  com: ""  # Auto-detect if empty / 空则自动检测
+  timeout: 1.0
+
+# Recording configuration / 录制配置
+recording:
+  mode: realtime  # realtime or frame / 实时或帧式
+  freq: 20  # Hz for realtime recording / 实时录制频率
+  save_dir: "./recordings"
+
+# Servo configuration (17 servos) / 舵机配置（17台）
+servos:
+  1: {min_reg: -32767, max_reg: 32767, offset: 0, scale: 1.0, invert: false}
+  2: {min_reg: -32767, max_reg: 32767, offset: 0, scale: 1.0, invert: false}
+  3: {min_reg: -32767, max_reg: 32767, offset: 0, scale: 1.0, invert: false}
+  4: {min_reg: -32767, max_reg: 32767, offset: 0, scale: 1.0, invert: false}
+  5: {min_reg: -32767, max_reg: 32767, offset: 0, scale: 1.0, invert: false}
+  6: {min_reg: -32767, max_reg: 32767, offset: 0, scale: 1.0, invert: false}
+  7: {min_reg: -32767, max_reg: 32767, offset: 0, scale: 1.0, invert: false}
+  8: {min_reg: -32767, max_reg: 32767, offset: 0, scale: 1.0, invert: false}
+  9: {min_reg: -32767, max_reg: 32767, offset: 0, scale: 1.0, invert: false}
+  10: {min_reg: -32767, max_reg: 32767, offset: 0, scale: 1.0, invert: false}
+  11: {min_reg: -32767, max_reg: 32767, offset: 0, scale: 1.0, invert: false}
+  12: {min_reg: -32767, max_reg: 32767, offset: 0, scale: 1.0, invert: false}
+  13: {min_reg: -32767, max_reg: 32767, offset: 0, scale: 1.0, invert: false}
+  14: {min_reg: -32767, max_reg: 32767, offset: 0, scale: 1.0, invert: false}
+  15: {min_reg: -32767, max_reg: 32767, offset: 0, scale: 1.0, invert: false}
+  16: {min_reg: -32767, max_reg: 32767, offset: 0, scale: 1.0, invert: false}
+  17: {min_reg: -32767, max_reg: 32767, offset: 0, scale: 1.0, invert: false}
+
+# Joint to motor mapping / 关节到舵机映射
+# Negative values indicate inverted direction / 负值表示方向反转
+joint_to_motor_map:
+  thumb_mcp: -8
+  thumb_abd: -7
+  thumb_pip: -5
+  thumb_dip: -6
+  index_abd: -11
+  index_mcp: -10
+  index_pip: -9
+  middle_abd: -12
+  middle_mcp: -1
+  middle_pip: -13
+  ring_abd: -4
+  ring_mcp: -2
+  ring_pip: -3
+  pinky_abd: -16
+  pinky_mcp: -14
+  pinky_pip: -15
+  wrist: -17
+
+# Gesture recognition settings / 手势识别设置
+gesture:
+  enabled: false
+  camera_id: 0
+  sensitivity: 1.0
+  smoothing: 0.3

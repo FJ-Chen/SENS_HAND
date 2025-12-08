@@ -1,0 +1,7 @@
+PyQt5>=5.15.0
+pyserial>=3.5
+mediapipe>=0.10.0
+numpy>=1.21.0
+PyYAML>=6.0
+h5py>=3.7.0
+opencv-python>=4.7.0

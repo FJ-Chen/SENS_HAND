@@ -1,0 +1,770 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+"""
+Main Window / 主窗口
+PyQt5 main application window with all controls
+PyQt5主应用窗口，包含所有控制
+"""
+
+import sys
+from typing import Dict, Optional
+from PyQt5.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
+                             QTabWidget, QGroupBox, QComboBox, QPushButton,
+                             QLabel, QTextEdit, QFileDialog, QMessageBox,
+                             QScrollArea, QGridLayout, QSpinBox, QSlider,
+                             QCheckBox, QDoubleSpinBox)
+from PyQt5.QtCore import Qt, QTimer, pyqtSlot
+from PyQt5.QtGui import QFont
+
+from .translations import Translations as T
+from .ui_widgets import ServoControlWidget
+from core.serial_manager import SerialManager
+from core.servo_manager import ServoManager
+from core.recorder import Recorder
+from gesture.gesture_worker import GestureWorker
+
+
+class MainWindow(QMainWindow):
+    """
+    Main application window / 主应用窗口
+    """
+    
+    def __init__(self, config: dict):
+        """
+        Initialize main window / 初始化主窗口
+        
+        Args:
+            config: Application configuration / 应用配置
+        """
+        super().__init__()
+        self.config = config
+        
+        # Core components / 核心组件
+        self.serial_manager: Optional[SerialManager] = None
+        self.servo_manager: Optional[ServoManager] = None
+        self.recorder: Optional[Recorder] = None
+        self.gesture_worker: Optional[GestureWorker] = None
+        
+        # UI components / UI组件
+        self.servo_widgets: Dict[int, ServoControlWidget] = {}
+        
+        # Initialize UI / 初始化UI
+        self.init_ui()
+        
+        # Setup update timer / 设置更新定时器
+        self.update_timer = QTimer()
+        self.update_timer.timeout.connect(self.update_servo_feedback)
+        
+        # Set window properties / 设置窗口属性
+        self.setWindowTitle(T.get('main_window'))
+        self.setGeometry(100, 100, 1400, 900)
+        
+    def init_ui(self):
+        """Initialize user interface / 初始化用户界面"""
+        # Central widget / 中心部件
+        central_widget = QWidget()
+        self.setCentralWidget(central_widget)
+        
+        # Main layout / 主布局
+        main_layout = QVBoxLayout()
+        central_widget.setLayout(main_layout)
+        
+        # Top control bar / 顶部控制栏
+        control_bar = self.create_control_bar()
+        main_layout.addWidget(control_bar)
+        
+        # Tab widget for different sections / 标签页组件
+        self.tabs = QTabWidget()
+        main_layout.addWidget(self.tabs)
+        
+        # Create tabs / 创建标签页
+        self.create_servo_control_tab()
+        self.create_recording_tab()
+        self.create_gesture_tab()
+        self.create_log_tab()
+        
+        # Bottom status bar / 底部状态栏
+        self.statusBar().showMessage(T.get('disconnected'))
+        
+    def create_control_bar(self) -> QWidget:
+        """
+        Create top control bar / 创建顶部控制栏
+        
+        Returns:
+            Control bar widget / 控制栏组件
+        """
+        group = QGroupBox(T.get('connect'))
+        layout = QHBoxLayout()
+        
+        # Port selection / 端口选择
+        layout.addWidget(QLabel(T.get('port') + ":"))
+        self.port_combo = QComboBox()
+        self.refresh_ports()
+        layout.addWidget(self.port_combo)
+        
+        # Refresh button / 刷新按钮
+        refresh_btn = QPushButton(T.get('refresh_ports'))
+        refresh_btn.clicked.connect(self.refresh_ports)
+        layout.addWidget(refresh_btn)
+        
+        # Baudrate selection / 波特率选择
+        layout.addWidget(QLabel(T.get('baudrate') + ":"))
+        self.baudrate_combo = QComboBox()
+        self.baudrate_combo.addItems(['1000000', '115200', '57600', '38400', '19200', '9600'])
+        self.baudrate_combo.setCurrentText('1000000')
+        layout.addWidget(self.baudrate_combo)
+        
+        # Connect button / 连接按钮
+        self.connect_btn = QPushButton(T.get('connect'))
+        self.connect_btn.clicked.connect(self.toggle_connection)
+        layout.addWidget(self.connect_btn)
+        
+        layout.addStretch()
+        
+        # Language selection / 语言选择
+        layout.addWidget(QLabel(T.get('language') + ":"))
+        self.lang_combo = QComboBox()
+        self.lang_combo.addItems([T.get('chinese'), T.get('english')])
+        self.lang_combo.currentTextChanged.connect(self.change_language)
+        layout.addWidget(self.lang_combo)
+        
+        group.setLayout(layout)
+        return group
+        
+    def create_servo_control_tab(self):
+        """Create servo control tab / 创建舵机控制标签页"""
+        tab = QWidget()
+        layout = QVBoxLayout()
+        
+        # Batch control buttons / 批量控制按钮
+        batch_layout = QHBoxLayout()
+        
+        all_on_btn = QPushButton(T.get('all_on'))
+        all_on_btn.clicked.connect(self.torque_on_all)
+        batch_layout.addWidget(all_on_btn)
+        
+        all_off_btn = QPushButton(T.get('all_off'))
+        all_off_btn.clicked.connect(self.torque_off_all)
+        batch_layout.addWidget(all_off_btn)
+        
+        calibrate_btn = QPushButton(T.get('calibrate'))
+        calibrate_btn.clicked.connect(self.calibrate_limits)
+        batch_layout.addWidget(calibrate_btn)
+        
+        batch_layout.addStretch()
+        layout.addLayout(batch_layout)
+        
+        # Scroll area for servo widgets / 舵机组件滚动区域
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll_widget = QWidget()
+        scroll_layout = QGridLayout()
+        scroll_widget.setLayout(scroll_layout)
+        scroll.setWidget(scroll_widget)
+        
+        # Create 17 servo control widgets / 创建17个舵机控制组件
+        for i in range(1, 18):
+            servo_widget = ServoControlWidget(i)
+            servo_widget.position_changed.connect(self.on_servo_position_changed)
+            servo_widget.speed_changed.connect(self.on_servo_speed_changed)
+            servo_widget.accel_changed.connect(self.on_servo_accel_changed)
+            servo_widget.torque_toggled.connect(self.on_servo_torque_toggled)
+            
+            row = (i - 1) // 4
+            col = (i - 1) % 4
+            scroll_layout.addWidget(servo_widget, row, col)
+            
+            self.servo_widgets[i] = servo_widget
+        
+        layout.addWidget(scroll)
+        tab.setLayout(layout)
+        self.tabs.addTab(tab, T.get('servo_id'))
+        
+    def create_recording_tab(self):
+        """Create recording tab / 创建录制标签页"""
+        tab = QWidget()
+        layout = QVBoxLayout()
+        
+        # Recording controls / 录制控制
+        control_group = QGroupBox(T.get('recording'))
+        control_layout = QVBoxLayout()
+        
+        # Mode selection / 模式选择
+        mode_layout = QHBoxLayout()
+        mode_layout.addWidget(QLabel(T.get('mode_frame') + " / " + T.get('mode_realtime') + ":"))
+        
+        self.record_mode_combo = QComboBox()
+        self.record_mode_combo.addItems([T.get('mode_realtime'), T.get('mode_frame')])
+        mode_layout.addWidget(self.record_mode_combo)
+        
+        mode_layout.addStretch()
+        control_layout.addLayout(mode_layout)
+        
+        # Recording frequency / 录制频率
+        freq_layout = QHBoxLayout()
+        freq_layout.addWidget(QLabel(T.get('freq') + " (Hz):"))
+        
+        self.freq_spinbox = QSpinBox()
+        self.freq_spinbox.setMinimum(1)
+        self.freq_spinbox.setMaximum(100)
+        self.freq_spinbox.setValue(20)
+        freq_layout.addWidget(self.freq_spinbox)
+        
+        freq_layout.addStretch()
+        control_layout.addLayout(freq_layout)
+        
+        # Recording buttons / 录制按钮
+        btn_layout = QHBoxLayout()
+        
+        self.record_btn = QPushButton(T.get('record'))
+        self.record_btn.clicked.connect(self.toggle_recording)
+        btn_layout.addWidget(self.record_btn)
+        
+        self.add_frame_btn = QPushButton(T.get('add_frame'))
+        self.add_frame_btn.clicked.connect(self.add_recording_frame)
+        self.add_frame_btn.setEnabled(False)
+        btn_layout.addWidget(self.add_frame_btn)
+        
+        self.save_record_btn = QPushButton(T.get('save_recording'))
+        self.save_record_btn.clicked.connect(self.save_recording)
+        btn_layout.addWidget(self.save_record_btn)
+        
+        self.load_record_btn = QPushButton(T.get('load_recording'))
+        self.load_record_btn.clicked.connect(self.load_recording)
+        btn_layout.addWidget(self.load_record_btn)
+        
+        control_layout.addLayout(btn_layout)
+        control_group.setLayout(control_layout)
+        layout.addWidget(control_group)
+        
+        # Playback controls / 播放控制
+        playback_group = QGroupBox(T.get('play'))
+        playback_layout = QVBoxLayout()
+        
+        # Playback speed / 播放速度
+        speed_layout = QHBoxLayout()
+        speed_layout.addWidget(QLabel(T.get('playback_speed') + ":"))
+        
+        self.playback_speed = QDoubleSpinBox()
+        self.playback_speed.setMinimum(0.1)
+        self.playback_speed.setMaximum(5.0)
+        self.playback_speed.setSingleStep(0.1)
+        self.playback_speed.setValue(1.0)
+        speed_layout.addWidget(self.playback_speed)
+        
+        speed_layout.addStretch()
+        playback_layout.addLayout(speed_layout)
+        
+        # Playback buttons / 播放按钮
+        play_btn_layout = QHBoxLayout()
+        
+        self.play_btn = QPushButton(T.get('play'))
+        self.play_btn.clicked.connect(self.toggle_playback)
+        play_btn_layout.addWidget(self.play_btn)
+        
+        play_btn_layout.addStretch()
+        playback_layout.addLayout(play_btn_layout)
+        
+        playback_group.setLayout(playback_layout)
+        layout.addWidget(playback_group)
+        
+        layout.addStretch()
+        tab.setLayout(layout)
+        self.tabs.addTab(tab, T.get('recording'))
+        
+    def create_gesture_tab(self):
+        """Create gesture recognition tab / 创建手势识别标签页"""
+        tab = QWidget()
+        layout = QVBoxLayout()
+        
+        # Gesture control / 手势控制
+        control_group = QGroupBox(T.get('gesture'))
+        control_layout = QVBoxLayout()
+        
+        # Enable checkbox / 启用复选框
+        self.gesture_enable_cb = QCheckBox(T.get('gesture_enable'))
+        self.gesture_enable_cb.stateChanged.connect(self.toggle_gesture_recognition)
+        control_layout.addWidget(self.gesture_enable_cb)
+        
+        # Sensitivity slider / 灵敏度滑块
+        sens_layout = QHBoxLayout()
+        sens_layout.addWidget(QLabel(T.get('sensitivity') + ":"))
+        
+        self.sensitivity_slider = QSlider(Qt.Horizontal)
+        self.sensitivity_slider.setMinimum(1)
+        self.sensitivity_slider.setMaximum(10)
+        self.sensitivity_slider.setValue(5)
+        self.sensitivity_slider.valueChanged.connect(self.on_sensitivity_changed)
+        sens_layout.addWidget(self.sensitivity_slider)
+        
+        self.sensitivity_label = QLabel("5")
+        sens_layout.addWidget(self.sensitivity_label)
+        
+        control_layout.addLayout(sens_layout)
+        
+        # Status label / 状态标签
+        self.gesture_status_label = QLabel(T.get('status') + ": " + T.get('disconnected'))
+        control_layout.addWidget(self.gesture_status_label)
+        
+        control_group.setLayout(control_layout)
+        layout.addWidget(control_group)
+        
+        # Hand preview area / 手部预览区域
+        preview_group = QGroupBox("Hand Preview / 手部预览")
+        preview_layout = QVBoxLayout()
+        
+        self.hand_preview_label = QLabel("No camera feed / 无摄像头画面")
+        self.hand_preview_label.setMinimumHeight(400)
+        self.hand_preview_label.setAlignment(Qt.AlignCenter)
+        self.hand_preview_label.setStyleSheet("border: 1px solid gray; background-color: #f0f0f0;")
+        preview_layout.addWidget(self.hand_preview_label)
+        
+        preview_group.setLayout(preview_layout)
+        layout.addWidget(preview_group)
+        
+        layout.addStretch()
+        tab.setLayout(layout)
+        self.tabs.addTab(tab, T.get('gesture'))
+        
+    def create_log_tab(self):
+        """Create log tab / 创建日志标签页"""
+        tab = QWidget()
+        layout = QVBoxLayout()
+        
+        self.log_text = QTextEdit()
+        self.log_text.setReadOnly(True)
+        self.log_text.setFont(QFont("Courier New", 9))
+        layout.addWidget(self.log_text)
+        
+        # Clear button / 清除按钮
+        clear_btn = QPushButton("Clear Log / 清除日志")
+        clear_btn.clicked.connect(self.log_text.clear)
+        layout.addWidget(clear_btn)
+        
+        tab.setLayout(layout)
+        self.tabs.addTab(tab, T.get('log'))
+        
+    def log(self, message: str):
+        """
+        Add message to log / 添加消息到日志
+        
+        Args:
+            message: Log message / 日志消息
+        """
+        from datetime import datetime
+        timestamp = datetime.now().strftime("%H:%M:%S.%f")[:-3]
+        self.log_text.append(f"[{timestamp}] {message}")
+        
+        # Auto scroll to bottom / 自动滚动到底部
+        scrollbar = self.log_text.verticalScrollBar()
+        scrollbar.setValue(scrollbar.maximum())
+        
+    def refresh_ports(self):
+        """Refresh available serial ports / 刷新可用串口"""
+        import serial.tools.list_ports
+        
+        self.port_combo.clear()
+        ports = serial.tools.list_ports.comports()
+        
+        for port in ports:
+            self.port_combo.addItem(f"{port.device} - {port.description}")
+        
+        if not ports:
+            self.port_combo.addItem("No ports found / 未找到端口")
+            
+    @pyqtSlot()
+    def toggle_connection(self):
+        """Toggle serial connection / 切换串口连接"""
+        if self.serial_manager is None or not self.serial_manager.is_open():
+            # Connect / 连接
+            port_text = self.port_combo.currentText()
+            if "No ports" in port_text:
+                QMessageBox.warning(self, T.get('warning'), 
+                                  "No serial ports available / 没有可用串口")
+                return
+            
+            port = port_text.split(" - ")[0]
+            baudrate = int(self.baudrate_combo.currentText())
+            
+            try:
+                self.serial_manager = SerialManager(port, baudrate)
+                self.serial_manager.open()
+                
+                # Create servo manager / 创建舵机管理器
+                self.servo_manager = ServoManager(self.serial_manager, self.config)
+                
+                # Ping all servos / 检查所有舵机
+                self.log("Pinging all servos... / 检查所有舵机...")
+                results = self.servo_manager.ping_all()
+                
+                online_count = sum(1 for v in results.values() if v)
+                self.log(f"Found {online_count}/17 servos online / 找到{online_count}/17个舵机在线")
+                
+                # Update servo widgets / 更新舵机组件
+                for servo_id, connected in results.items():
+                    if servo_id in self.servo_widgets:
+                        self.servo_widgets[servo_id].set_connected(connected)
+                
+                # Create recorder / 创建录制器
+                self.recorder = Recorder(self.servo_manager, self.config)
+                
+                # Update UI / 更新UI
+                self.connect_btn.setText(T.get('disconnect'))
+                self.statusBar().showMessage(T.get('connected') + f" - {port}")
+                self.log(f"Connected to {port} / 已连接到{port}")
+                
+                # Start feedback update timer / 启动反馈更新定时器
+                self.update_timer.start(50)  # 20Hz
+                
+            except Exception as e:
+                QMessageBox.critical(self, T.get('error'), 
+                                   f"Connection failed / 连接失败: {str(e)}")
+                self.log(f"Connection error / 连接错误: {str(e)}")
+                
+        else:
+            # Disconnect / 断开
+            self.update_timer.stop()
+            
+            if self.gesture_worker:
+                self.gesture_worker.stop()
+                self.gesture_worker = None
+            
+            if self.recorder:
+                if self.recorder.recording:
+                    self.recorder.stop_recording()
+                if self.recorder.playing:
+                    self.recorder.stop_playback()
+            
+            if self.servo_manager:
+                self.servo_manager.torque_off_all()
+            
+            if self.serial_manager:
+                self.serial_manager.close()
+                self.serial_manager = None
+            
+            # Update UI / 更新UI
+            for widget in self.servo_widgets.values():
+                widget.set_connected(False)
+            
+            self.connect_btn.setText(T.get('connect'))
+            self.statusBar().showMessage(T.get('disconnected'))
+            self.log("Disconnected / 已断开连接")
+            
+    @pyqtSlot()
+    def torque_on_all(self):
+        """Enable torque for all servos / 所有舵机上电"""
+        if not self.servo_manager:
+            return
+        
+        self.log("Enabling torque for all servos / 所有舵机上电...")
+        results = self.servo_manager.torque_on_all()
+        
+        success_count = sum(1 for v in results.values() if v)
+        self.log(f"Torque enabled for {success_count} servos / {success_count}个舵机已上电")
+        
+        for servo_id, success in results.items():
+            if success and servo_id in self.servo_widgets:
+                self.servo_widgets[servo_id].torque_button.setChecked(True)
+                self.servo_widgets[servo_id].update_torque_button_text(True)
+                
+    @pyqtSlot()
+    def torque_off_all(self):
+        """Disable torque for all servos / 所有舵机下电"""
+        if not self.servo_manager:
+            return
+        
+        self.log("Disabling torque for all servos / 所有舵机下电...")
+        results = self.servo_manager.torque_off_all()
+        
+        success_count = sum(1 for v in results.values() if v)
+        self.log(f"Torque disabled for {success_count} servos / {success_count}个舵机已下电")
+        
+        for servo_id, success in results.items():
+            if success and servo_id in self.servo_widgets:
+                self.servo_widgets[servo_id].torque_button.setChecked(False)
+                self.servo_widgets[servo_id].update_torque_button_text(False)
+                
+    @pyqtSlot()
+    def calibrate_limits(self):
+        """Calibrate servo limits / 校准舵机极限"""
+        if not self.servo_manager:
+            return
+        
+        reply = QMessageBox.question(self, T.get('calibrate'),
+                                    T.get('calibration_help') + "\n\n" +
+                                    "Calibration will run for 10 seconds. Continue?\n" +
+                                    "校准将运行10秒。继续吗？",
+                                    QMessageBox.Yes | QMessageBox.No)
+        
+        if reply == QMessageBox.Yes:
+            self.log("Starting calibration... / 开始校准...")
+            limits = self.servo_manager.calibrate_limits(duration=10.0)
+            
+            # Update servo widgets / 更新舵机组件
+            for servo_id, limit_data in limits.items():
+                if servo_id in self.servo_widgets:
+                    self.servo_widgets[servo_id].update_limits(
+                        limit_data['min'], limit_data['max']
+                    )
+            
+            self.log("Calibration complete / 校准完成")
+            
+            # Save config / 保存配置
+            self.servo_manager.save_config('./config/servo_config.yaml')
+            self.log("Configuration saved / 配置已保存")
+            
+    @pyqtSlot(int, int)
+    def on_servo_position_changed(self, servo_id: int, position: int):
+        """Handle servo position change / 处理舵机位置变化"""
+        if not self.servo_manager:
+            return
+        
+        servo = self.servo_manager.get_servo(servo_id)
+        if servo and servo.connected:
+            servo.set_goal_position(position)
+            
+    @pyqtSlot(int, int)
+    def on_servo_speed_changed(self, servo_id: int, speed: int):
+        """Handle servo speed change / 处理舵机速度变化"""
+        if not self.servo_manager:
+            return
+        
+        servo = self.servo_manager.get_servo(servo_id)
+        if servo and servo.connected:
+            servo.set_goal_speed(speed)
+            
+    @pyqtSlot(int, int)
+    def on_servo_accel_changed(self, servo_id: int, accel: int):
+        """Handle servo acceleration change / 处理舵机加速度变化"""
+        if not self.servo_manager:
+            return
+        
+        servo = self.servo_manager.get_servo(servo_id)
+        if servo and servo.connected:
+            servo.set_goal_acceleration(accel)
+            
+    @pyqtSlot(int, bool)
+    def on_servo_torque_toggled(self, servo_id: int, enabled: bool):
+        """Handle servo torque toggle / 处理舵机扭矩切换"""
+        if not self.servo_manager:
+            return
+        
+        servo = self.servo_manager.get_servo(servo_id)
+        if servo and servo.connected:
+            if enabled:
+                servo.torque_on()
+            else:
+                servo.torque_off()
+                
+    @pyqtSlot()
+    def update_servo_feedback(self):
+        """Update servo feedback display / 更新舵机反馈显示"""
+        if not self.servo_manager:
+            return
+        
+        try:
+            positions = self.servo_manager.read_all_positions()
+            
+            for servo_id, position in positions.items():
+                if position is not None and servo_id in self.servo_widgets:
+                    self.servo_widgets[servo_id].update_position(position)
+                    
+        except Exception as e:
+            # Don't log every error to avoid spam / 避免日志刷屏
+            pass
+            
+    @pyqtSlot()
+    def toggle_recording(self):
+        """Toggle recording / 切换录制"""
+        if not self.recorder:
+            return
+        
+        if not self.recorder.recording:
+            # Start recording / 开始录制
+            mode = 'realtime' if self.record_mode_combo.currentIndex() == 0 else 'frame'
+            self.recorder.freq = self.freq_spinbox.value()
+            self.recorder.start_recording(mode)
+            
+            self.record_btn.setText(T.get('stop_record'))
+            self.log(f"Recording started ({mode}) / 录制开始 ({mode})")
+            
+            if mode == 'frame':
+                self.add_frame_btn.setEnabled(True)
+        else:
+            # Stop recording / 停止录制
+            frame_count = self.recorder.stop_recording()
+            
+            self.record_btn.setText(T.get('record'))
+            self.add_frame_btn.setEnabled(False)
+            self.log(f"Recording stopped, {frame_count} frames / 录制停止，{frame_count}帧")
+            
+    @pyqtSlot()
+    def add_recording_frame(self):
+        """Add frame to recording / 添加帧到录制"""
+        if not self.recorder or not self.recorder.recording:
+            return
+        
+        self.recorder.add_frame()
+        
+    @pyqtSlot()
+    def save_recording(self):
+        """Save recording to file / 保存录制到文件"""
+        if not self.recorder or not self.recorder.frames:
+            QMessageBox.warning(self, T.get('warning'),
+                              "No recording to save / 没有录制可保存")
+            return
+        
+        filename, _ = QFileDialog.getSaveFileName(
+            self, T.get('save_recording'), "./recordings",
+            "JSON Files (*.json)"
+        )
+        
+        if filename:
+            filepath = self.recorder.save_recording(filename)
+            self.log(f"Recording saved to {filepath} / 录制已保存到 {filepath}")
+            
+    @pyqtSlot()
+    def load_recording(self):
+        """Load recording from file / 从文件加载录制"""
+        if not self.recorder:
+            return
+        
+        filename, _ = QFileDialog.getOpenFileName(
+            self, T.get('load_recording'), "./recordings",
+            "JSON Files (*.json)"
+        )
+        
+        if filename:
+            success = self.recorder.load_recording(filename)
+            if success:
+                self.log(f"Recording loaded from {filename} / 录制已加载")
+            else:
+                QMessageBox.critical(self, T.get('error'),
+                                   "Failed to load recording / 加载录制失败")
+                
+    @pyqtSlot()
+    def toggle_playback(self):
+        """Toggle playback / 切换播放"""
+        if not self.recorder:
+            return
+        
+        if not self.recorder.playing:
+            # Start playback / 开始播放
+            if not self.recorder.frames:
+                QMessageBox.warning(self, T.get('warning'),
+                                  "No recording to play / 没有录制可播放")
+                return
+            
+            speed = self.playback_speed.value()
+            self.recorder.start_playback(speed)
+            
+            self.play_btn.setText(T.get('stop_play'))
+            self.log(f"Playback started at {speed}x / 播放开始，速度{speed}x")
+        else:
+            # Stop playback / 停止播放
+            self.recorder.stop_playback()
+            
+            self.play_btn.setText(T.get('play'))
+            self.log("Playback stopped / 播放停止")
+            
+    @pyqtSlot(int)
+    def toggle_gesture_recognition(self, state: int):
+        """Toggle gesture recognition / 切换手势识别"""
+        if state == Qt.Checked:
+            # Start gesture recognition / 启动手势识别
+            try:
+                from gesture.gesture_worker import GestureWorker
+                
+                # 检查是否已连接舵机（可选）
+                if not self.servo_manager:
+                    reply = QMessageBox.question(
+                        self, 
+                        T.get('warning'),
+                        "Servo not connected. Start gesture recognition in preview mode?\n"
+                        "舵机未连接。以预览模式启动手势识别？",
+                        QMessageBox.Yes | QMessageBox.No
+                    )
+                    if reply == QMessageBox.No:
+                        self.gesture_enable_cb.setChecked(False)
+                        return
+                
+                self.gesture_worker = GestureWorker(self.servo_manager, self.config)
+                
+                # 连接画面更新信号
+                self.gesture_worker.frame_ready.connect(self.update_gesture_preview)
+                
+                self.gesture_worker.start()
+                
+                self.gesture_status_label.setText(T.get('status') + ": " + T.get('online'))
+                self.log("Gesture recognition started / 手势识别已启动")
+                
+            except Exception as e:
+                QMessageBox.critical(self, T.get('error'),
+                                f"Failed to start gesture recognition / 启动手势识别失败: {str(e)}")
+                self.gesture_enable_cb.setChecked(False)
+                self.log(f"Gesture error / 手势错误: {str(e)}")
+        else:
+            # Stop gesture recognition / 停止手势识别
+            if self.gesture_worker:
+                self.gesture_worker.stop()
+                self.gesture_worker = None
+                
+                # 清空预览
+                self.hand_preview_label.setText("No camera feed / 无摄像头画面")
+                
+                self.gesture_status_label.setText(T.get('status') + ": " + T.get('offline'))
+                self.log("Gesture recognition stopped / 手势识别已停止")
+
+    @pyqtSlot(object)
+    def update_gesture_preview(self, frame):
+        """
+        Update gesture preview image / 更新手势预览图像
+        
+        Args:
+            frame: OpenCV frame (numpy array) / OpenCV帧（numpy数组）
+        """
+        from PyQt5.QtGui import QImage, QPixmap
+        import cv2
+        
+        # 转换 OpenCV BGR 到 RGB
+        rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        h, w, ch = rgb_frame.shape
+        bytes_per_line = ch * w
+        
+        # 创建 QImage
+        qt_image = QImage(rgb_frame.data, w, h, bytes_per_line, QImage.Format_RGB888)
+        
+        # 缩放以适应显示区域
+        scaled_pixmap = QPixmap.fromImage(qt_image).scaled(
+            self.hand_preview_label.width(),
+            self.hand_preview_label.height(),
+            Qt.KeepAspectRatio,
+            Qt.SmoothTransformation
+        )
+        
+        # 显示
+        self.hand_preview_label.setPixmap(scaled_pixmap)
+
+    @pyqtSlot(int)
+    def on_sensitivity_changed(self, value: int):
+        """Handle sensitivity slider change / 处理灵敏度滑块变化"""
+        self.sensitivity_label.setText(str(value))
+        
+        if self.gesture_worker:
+            self.gesture_worker.set_sensitivity(value / 10.0)
+            
+    def change_language(self, lang_text: str):
+        """Change UI language / 更改UI语言"""
+        if T.get('chinese') in lang_text:
+            T.set_language(T.LANG_CN)
+        else:
+            T.set_language(T.LANG_EN)
+        
+        # Update all UI texts / 更新所有UI文本
+        self.retranslate_ui()
+        
+    def retranslate_ui(self):
+        """Update all UI texts for language change / 更新所有UI文本"""
+        self.setWindowTitle(T.get('main_window'))
+        # ... (更多UI文本更新)
+        self.log("Language changed / 语言已更改")
