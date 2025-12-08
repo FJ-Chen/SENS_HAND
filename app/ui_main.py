@@ -86,6 +86,65 @@ class MainWindow(QMainWindow):
         # Bottom status bar / 底部状态栏
         self.statusBar().showMessage(T.get('disconnected'))
         
+    def retranslate_ui(self):
+        """
+        Re-apply translations to all UI elements / 重新应用翻译到所有UI元素
+        """
+        # Window title / 窗口标题
+        self.setWindowTitle(T.get('main_window'))
+        
+        # Tab titles / 标签页标题
+        self.tabs.setTabText(0, T.get('servo_id'))
+        self.tabs.setTabText(1, T.get('recording'))
+        self.tabs.setTabText(2, T.get('gesture'))
+        self.tabs.setTabText(3, T.get('log'))
+        
+        # Control bar / 控制栏
+        self.refresh_ports_btn.setText(T.get('refresh_ports'))
+        if self.serial_manager and self.serial_manager.is_open():
+            self.connect_btn.setText(T.get('disconnect'))
+        else:
+            self.connect_btn.setText(T.get('connect'))
+        
+        # Servo control tab / 舵机控制标签页
+        self.all_on_btn.setText(T.get('all_on'))
+        self.all_off_btn.setText(T.get('all_off'))
+        self.calibrate_btn.setText(T.get('calibrate'))
+        
+        # Recording tab / 录制标签页
+        self.recording_group.setTitle(T.get('recording'))
+        if self.recorder and self.recorder.recording:
+            self.record_btn.setText(T.get('stop_record'))
+        else:
+            self.record_btn.setText(T.get('record'))
+        self.add_frame_btn.setText(T.get('add_frame'))
+        self.save_record_btn.setText(T.get('save_recording'))
+        self.load_record_btn.setText(T.get('load_recording'))
+        
+        self.playback_group.setTitle(T.get('play'))
+        if self.recorder and self.recorder.playing:
+            self.play_btn.setText(T.get('stop_play'))
+        else:
+            self.play_btn.setText(T.get('play'))
+        
+        # Gesture tab / 手势标签页
+        self.gesture_control_group.setTitle(T.get('gesture'))
+        self.gesture_enable_cb.setText(T.get('gesture_enable'))
+        
+        # Update status labels / 更新状态标签
+        if self.serial_manager and self.serial_manager.is_open():
+            self.statusBar().showMessage(T.get('connected'))
+        else:
+            self.statusBar().showMessage(T.get('disconnected'))
+        
+        if self.gesture_worker:
+            self.gesture_status_label.setText(T.get('status') + ": " + T.get('online'))
+        else:
+            self.gesture_status_label.setText(T.get('status') + ": " + T.get('offline'))
+        
+        # Log message / 日志消息
+        self.log(f"Language changed / 语言已切换")
+        
     def create_control_bar(self) -> QWidget:
         """
         Create top control bar / 创建顶部控制栏
@@ -103,9 +162,9 @@ class MainWindow(QMainWindow):
         layout.addWidget(self.port_combo)
         
         # Refresh button / 刷新按钮
-        refresh_btn = QPushButton(T.get('refresh_ports'))
-        refresh_btn.clicked.connect(self.refresh_ports)
-        layout.addWidget(refresh_btn)
+        self.refresh_ports_btn = QPushButton(T.get('refresh_ports'))
+        self.refresh_ports_btn.clicked.connect(self.refresh_ports)
+        layout.addWidget(self.refresh_ports_btn)
         
         # Baudrate selection / 波特率选择
         layout.addWidget(QLabel(T.get('baudrate') + ":"))
@@ -125,7 +184,16 @@ class MainWindow(QMainWindow):
         layout.addWidget(QLabel(T.get('language') + ":"))
         self.lang_combo = QComboBox()
         self.lang_combo.addItems([T.get('chinese'), T.get('english')])
-        self.lang_combo.currentTextChanged.connect(self.change_language)
+        
+        # Set current language / 设置当前语言
+        current_lang = self.config.get('ui', {}).get('language', 'cn')
+        if current_lang == 'en':
+            self.lang_combo.setCurrentText(T.get('english'))
+        else:
+            self.lang_combo.setCurrentText(T.get('chinese'))
+        
+        # Connect signal / 连接信号
+        self.lang_combo.currentTextChanged.connect(self.on_language_changed)
         layout.addWidget(self.lang_combo)
         
         group.setLayout(layout)
@@ -139,17 +207,17 @@ class MainWindow(QMainWindow):
         # Batch control buttons / 批量控制按钮
         batch_layout = QHBoxLayout()
         
-        all_on_btn = QPushButton(T.get('all_on'))
-        all_on_btn.clicked.connect(self.torque_on_all)
-        batch_layout.addWidget(all_on_btn)
+        self.all_on_btn = QPushButton(T.get('all_on'))
+        self.all_on_btn.clicked.connect(self.torque_on_all)
+        batch_layout.addWidget(self.all_on_btn)
         
-        all_off_btn = QPushButton(T.get('all_off'))
-        all_off_btn.clicked.connect(self.torque_off_all)
-        batch_layout.addWidget(all_off_btn)
+        self.all_off_btn = QPushButton(T.get('all_off'))
+        self.all_off_btn.clicked.connect(self.torque_off_all)
+        batch_layout.addWidget(self.all_off_btn)
         
-        calibrate_btn = QPushButton(T.get('calibrate'))
-        calibrate_btn.clicked.connect(self.calibrate_limits)
-        batch_layout.addWidget(calibrate_btn)
+        self.calibrate_btn = QPushButton(T.get('calibrate'))
+        self.calibrate_btn.clicked.connect(self.calibrate_limits)
+        batch_layout.addWidget(self.calibrate_btn)
         
         batch_layout.addStretch()
         layout.addLayout(batch_layout)
@@ -186,7 +254,7 @@ class MainWindow(QMainWindow):
         layout = QVBoxLayout()
         
         # Recording controls / 录制控制
-        control_group = QGroupBox(T.get('recording'))
+        self.recording_group = QGroupBox(T.get('recording'))
         control_layout = QVBoxLayout()
         
         # Mode selection / 模式选择
@@ -202,7 +270,7 @@ class MainWindow(QMainWindow):
         
         # Recording frequency / 录制频率
         freq_layout = QHBoxLayout()
-        freq_layout.addWidget(QLabel(T.get('freq') + " (Hz):"))
+        freq_layout.addWidget(QLabel("Freq (Hz):"))
         
         self.freq_spinbox = QSpinBox()
         self.freq_spinbox.setMinimum(1)
@@ -234,11 +302,11 @@ class MainWindow(QMainWindow):
         btn_layout.addWidget(self.load_record_btn)
         
         control_layout.addLayout(btn_layout)
-        control_group.setLayout(control_layout)
-        layout.addWidget(control_group)
+        self.recording_group.setLayout(control_layout)
+        layout.addWidget(self.recording_group)
         
         # Playback controls / 播放控制
-        playback_group = QGroupBox(T.get('play'))
+        self.playback_group = QGroupBox(T.get('play'))
         playback_layout = QVBoxLayout()
         
         # Playback speed / 播放速度
@@ -265,8 +333,8 @@ class MainWindow(QMainWindow):
         play_btn_layout.addStretch()
         playback_layout.addLayout(play_btn_layout)
         
-        playback_group.setLayout(playback_layout)
-        layout.addWidget(playback_group)
+        self.playback_group.setLayout(playback_layout)
+        layout.addWidget(self.playback_group)
         
         layout.addStretch()
         tab.setLayout(layout)
@@ -278,7 +346,7 @@ class MainWindow(QMainWindow):
         layout = QVBoxLayout()
         
         # Gesture control / 手势控制
-        control_group = QGroupBox(T.get('gesture'))
+        self.gesture_control_group = QGroupBox(T.get('gesture'))
         control_layout = QVBoxLayout()
         
         # Enable checkbox / 启用复选框
@@ -306,8 +374,8 @@ class MainWindow(QMainWindow):
         self.gesture_status_label = QLabel(T.get('status') + ": " + T.get('disconnected'))
         control_layout.addWidget(self.gesture_status_label)
         
-        control_group.setLayout(control_layout)
-        layout.addWidget(control_group)
+        self.gesture_control_group.setLayout(control_layout)
+        layout.addWidget(self.gesture_control_group)
         
         # Hand preview area / 手部预览区域
         preview_group = QGroupBox("Hand Preview / 手部预览")
@@ -673,8 +741,6 @@ class MainWindow(QMainWindow):
         if state == Qt.Checked:
             # Start gesture recognition / 启动手势识别
             try:
-                from gesture.gesture_worker import GestureWorker
-                
                 # 检查是否已连接舵机（可选）
                 if not self.servo_manager:
                     reply = QMessageBox.question(
@@ -752,19 +818,55 @@ class MainWindow(QMainWindow):
         
         if self.gesture_worker:
             self.gesture_worker.set_sensitivity(value / 10.0)
-            
-    def change_language(self, lang_text: str):
-        """Change UI language / 更改UI语言"""
-        if T.get('chinese') in lang_text:
-            T.set_language(T.LANG_CN)
+    
+    @pyqtSlot(str)
+    def on_language_changed(self, text: str):
+        """
+        Handle language change / 处理语言切换
+        
+        Args:
+            text: Selected language text / 选中的语言文本
+        """
+        # Map display text to language code / 映射显示文本到语言代码
+        if text == T.get('english', 'cn'):  # Check Chinese version
+            language_code = 'en'
+        elif text == T.get('english', 'en'):  # Check English version
+            language_code = 'en'
         else:
-            T.set_language(T.LANG_EN)
+            language_code = 'cn'
         
-        # Update all UI texts / 更新所有UI文本
+        # Skip if already current language / 如果已是当前语言则跳过
+        if T.get_current_language() == language_code:
+            return
+        
+        # Change language / 切换语言
+        self.change_language(language_code)
+
+    def change_language(self, language: str):
+        """
+        Change UI language / 切换UI语言
+        
+        Args:
+            language: Language code ('cn' or 'en') / 语言代码
+        """
+        # Save to config / 保存到配置
+        if 'ui' not in self.config:
+            self.config['ui'] = {}
+        self.config['ui']['language'] = language
+        self.save_config()
+        
+        # Update translator / 更新翻译器
+        T.set_language(language)
+        
+        # Re-translate all UI elements / 重新翻译所有UI元素
         self.retranslate_ui()
-        
-    def retranslate_ui(self):
-        """Update all UI texts for language change / 更新所有UI文本"""
-        self.setWindowTitle(T.get('main_window'))
-        # ... (更多UI文本更新)
-        self.log("Language changed / 语言已更改")
+    
+    def save_config(self):
+        """Save configuration to file / 保存配置到文件"""
+        import yaml
+        try:
+            with open('./config/app_config.yaml', 'w', encoding='utf-8') as f:
+                yaml.dump(self.config, f, allow_unicode=True)
+        except Exception as e:
+            self.log(f"Failed to save config / 保存配置失败: {str(e)}")
+            

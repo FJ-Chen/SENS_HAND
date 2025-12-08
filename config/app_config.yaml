@@ -1,0 +1,136 @@
+gesture:
+  camera_id: 0
+  enabled: false
+  sensitivity: 1.0
+  smoothing: 0.3
+joint_to_motor_map:
+  index_abd: -11
+  index_mcp: -10
+  index_pip: -9
+  middle_abd: -12
+  middle_mcp: -1
+  middle_pip: -13
+  pinky_abd: -16
+  pinky_mcp: -14
+  pinky_pip: -15
+  ring_abd: -4
+  ring_mcp: -2
+  ring_pip: -3
+  thumb_abd: -7
+  thumb_dip: -6
+  thumb_mcp: -8
+  thumb_pip: -5
+  wrist: -17
+recording:
+  freq: 20
+  mode: realtime
+  save_dir: ./recordings
+serial:
+  baudrate: 1000000
+  com: ''
+  timeout: 1.0
+servos:
+  1:
+    invert: false
+    max_reg: 32767
+    min_reg: -32767
+    offset: 0
+    scale: 1.0
+  2:
+    invert: false
+    max_reg: 32767
+    min_reg: -32767
+    offset: 0
+    scale: 1.0
+  3:
+    invert: false
+    max_reg: 32767
+    min_reg: -32767
+    offset: 0
+    scale: 1.0
+  4:
+    invert: false
+    max_reg: 32767
+    min_reg: -32767
+    offset: 0
+    scale: 1.0
+  5:
+    invert: false
+    max_reg: 32767
+    min_reg: -32767
+    offset: 0
+    scale: 1.0
+  6:
+    invert: false
+    max_reg: 32767
+    min_reg: -32767
+    offset: 0
+    scale: 1.0
+  7:
+    invert: false
+    max_reg: 32767
+    min_reg: -32767
+    offset: 0
+    scale: 1.0
+  8:
+    invert: false
+    max_reg: 32767
+    min_reg: -32767
+    offset: 0
+    scale: 1.0
+  9:
+    invert: false
+    max_reg: 32767
+    min_reg: -32767
+    offset: 0
+    scale: 1.0
+  10:
+    invert: false
+    max_reg: 32767
+    min_reg: -32767
+    offset: 0
+    scale: 1.0
+  11:
+    invert: false
+    max_reg: 32767
+    min_reg: -32767
+    offset: 0
+    scale: 1.0
+  12:
+    invert: false
+    max_reg: 32767
+    min_reg: -32767
+    offset: 0
+    scale: 1.0
+  13:
+    invert: false
+    max_reg: 32767
+    min_reg: -32767
+    offset: 0
+    scale: 1.0
+  14:
+    invert: false
+    max_reg: 32767
+    min_reg: -32767
+    offset: 0
+    scale: 1.0
+  15:
+    invert: false
+    max_reg: 32767
+    min_reg: -32767
+    offset: 0
+    scale: 1.0
+  16:
+    invert: false
+    max_reg: 32767
+    min_reg: -32767
+    offset: 0
+    scale: 1.0
+  17:
+    invert: false
+    max_reg: 32767
+    min_reg: -32767
+    offset: 0
+    scale: 1.0
+ui:
+  language: cn

@@ -1,0 +1,32 @@
+# --- Python cache ---
+__pycache__/
+*.py[cod]
+*.pyo
+*.so
+
+# --- Virtual environments ---
+venv/
+.env/
+.venv/
+
+# --- Logs ---
+*.log
+
+# --- IDE / editor files ---
+.vscode/
+.idea/
+
+# --- OS generated files ---
+.DS_Store
+Thumbs.db
+
+# --- Python packaging ---
+*.egg-info/
+dist/
+build/
+
+# --- Jupyter notebook checkpoint ---
+.ipynb_checkpoints/
+
+# --- Recordings or runtime generated data (如果 recordings 是运行生成的就忽略) ---
+recordings/
