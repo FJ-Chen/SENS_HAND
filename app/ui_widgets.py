@@ -179,7 +179,7 @@ class ServoControlWidget(QFrame):
         self.torque_spinbox.setMinimum(0)
         self.torque_spinbox.setMaximum(1000)
         self.torque_spinbox.setValue(500)
-        self.torque_spinbox.setSuffix(" N·cm")
+        self.torque_spinbox.setSuffix("(max:2047)")
         # 禁用鼠标滚轮
         self.torque_spinbox.wheelEvent = lambda event: None
         self.torque_spinbox.setFocusPolicy(Qt.StrongFocus)
