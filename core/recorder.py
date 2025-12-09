@@ -33,7 +33,8 @@ class RecordingFrame:
             torques: Optional torques / 可选扭矩
         """
         self.timestamp = timestamp
-        self.positions = positions
+        # 过滤掉None值的位置数据
+        self.positions = {k: v for k, v in positions.items() if v is not None}
         self.speeds = speeds or {}
         self.accelerations = accelerations or {}
         self.torques = torques or {}
@@ -96,6 +97,14 @@ class Recorder:
         self.playing = False
         self.play_thread: Optional[threading.Thread] = None
         self.playback_speed = 1.0  # Speed multiplier / 速度倍率
+        self.repeat_count = 1  # 重复次数
+        self.current_repeat = 0  # 当前重复次数
+        
+        # Frame mode playback settings / 帧模式播放设置
+        self.frame_interval = 1.0  # 帧间隔（秒）
+        self.playback_servo_speed = 500  # 播放时舵机速度
+        self.playback_acceleration = 50  # 播放时加速度
+        self.playback_torque = 700  # 播放时扭矩
     
     def start_recording(self, mode: Optional[str] = None):
         """
@@ -152,6 +161,7 @@ class Recorder:
                   torques: Optional[Dict[int, int]] = None):
         """
         Manually add a frame (for frame-based recording) / 手动添加帧（用于帧式录制）
+        读取所有已连接舵机的当前位置
         
         Args:
             positions: Servo positions (if None, reads current) / 舵机位置
@@ -164,13 +174,17 @@ class Recorder:
             return
         
         if positions is None:
-            positions = self.servo_manager.read_all_positions()
+            # 读取所有已连接舵机的位置
+            all_positions = self.servo_manager.read_all_positions()
+            # 只保留有效位置（非None）
+            positions = {k: v for k, v in all_positions.items() if v is not None}
         
         timestamp = time.time() - self.start_time
         frame = RecordingFrame(timestamp, positions, speeds, accelerations, torques)
         self.frames.append(frame)
         
-        print(f"Frame {len(self.frames)} added at {timestamp:.3f}s / 第{len(self.frames)}帧已添加")
+        print(f"Frame {len(self.frames)} added at {timestamp:.3f}s with {len(positions)} servos")
+        print(f"第{len(self.frames)}帧已添加，包含{len(positions)}个舵机")
     
     def _realtime_record_loop(self):
         """
@@ -182,10 +196,12 @@ class Recorder:
         
         while self.recording:
             try:
-                positions = self.servo_manager.read_all_positions()
-                timestamp = time.time() - self.start_time
+                all_positions = self.servo_manager.read_all_positions()
+                # 过滤None值
+                valid_positions = {k: v for k, v in all_positions.items() if v is not None}
                 
-                frame = RecordingFrame(timestamp, positions)
+                timestamp = time.time() - self.start_time
+                frame = RecordingFrame(timestamp, valid_positions)
                 self.frames.append(frame)
                 
                 time.sleep(interval)
@@ -253,7 +269,8 @@ class Recorder:
                           for frame_data in data['frames']]
             
             print(f"Loaded {len(self.frames)} frames from {filepath}")
-            print(f"从{filepath}加载了{len(self.frames)}帧")
+            print(f"Mode: {self.mode}")
+            print(f"从{filepath}加载了{len(self.frames)}帧，模式：{self.mode}")
             
             return True
             
@@ -262,12 +279,13 @@ class Recorder:
             print(f"加载录制失败: {e}")
             return False
     
-    def start_playback(self, speed: float = 1.0):
+    def start_playback(self, speed: float = 1.0, repeat_count: int = 1):
         """
         Start playback / 开始播放
         
         Args:
             speed: Playback speed multiplier / 播放速度倍率
+            repeat_count: Number of times to repeat / 重复次数
         """
         if self.playing:
             print("Already playing / 已在播放中")
@@ -279,11 +297,14 @@ class Recorder:
         
         self.playing = True
         self.playback_speed = speed
+        self.repeat_count = repeat_count
+        self.current_repeat = 0
         
         self.play_thread = threading.Thread(target=self._playback_loop, daemon=True)
         self.play_thread.start()
         
-        print(f"Playback started at {speed}x speed / 播放开始，速度{speed}x")
+        print(f"Playback started: {speed}x speed, {repeat_count} repeats, mode: {self.mode}")
+        print(f"播放开始：速度{speed}x，重复{repeat_count}次，模式：{self.mode}")
     
     def stop_playback(self):
         """Stop playback / 停止播放"""
@@ -303,6 +324,28 @@ class Recorder:
         Replays recorded frames with timing
         按时间重放录制的帧
         """
+        for repeat in range(self.repeat_count):
+            if not self.playing:
+                break
+                
+            self.current_repeat = repeat + 1
+            print(f"Repeat {self.current_repeat}/{self.repeat_count}")
+            print(f"第{self.current_repeat}/{self.repeat_count}次重复")
+            
+            if self.mode == self.MODE_REALTIME:
+                self._play_realtime_mode()
+            else:
+                self._play_frame_mode()
+            
+            # 如果不是最后一次重复，稍作暂停
+            if repeat < self.repeat_count - 1 and self.playing:
+                time.sleep(0.5)
+        
+        self.playing = False
+        print("Playback completed / 播放完成")
+    
+    def _play_realtime_mode(self):
+        """播放实时录制模式 - 固定参数"""
         start_time = time.time()
         
         for i, frame in enumerate(self.frames):
@@ -317,15 +360,54 @@ class Recorder:
             if current_time < target_time:
                 time.sleep(target_time - current_time)
             
-            # Send positions to servos / 发送位置到舵机
+            # Send positions to servos with fixed parameters / 使用固定参数发送位置
             try:
                 self.servo_manager.set_all_positions(
                     frame.positions,
-                    speed=frame.speeds.get(1) if frame.speeds else None,
-                    acceleration=frame.accelerations.get(1) if frame.accelerations else None
+                    speed=1000,  # 固定速度
+                    acceleration=0,  # 固定加速度（最大）
+                    torque=700  # 固定扭矩
                 )
             except Exception as e:
-                print(f"Playback error at frame {i}: {e}")
+                print(f"Realtime playback error at frame {i}: {e}")
+    
+    def _play_frame_mode(self):
+        """播放帧录制模式 - 可调参数"""
+        for i, frame in enumerate(self.frames):
+            if not self.playing:
+                break
+            
+            # Send positions to servos with user settings / 使用用户设置发送位置
+            try:
+                self.servo_manager.set_all_positions(
+                    frame.positions,
+                    speed=self.playback_servo_speed,
+                    acceleration=self.playback_acceleration,
+                    torque=self.playback_torque
+                )
+                
+                # Wait for frame interval / 等待帧间隔
+                time.sleep(self.frame_interval)
+                
+            except Exception as e:
+                print(f"Frame playback error at frame {i}: {e}")
+    
+    def set_frame_playback_settings(self, speed: int, acceleration: int, 
+                                   torque: int, frame_interval: float):
+        """
+        Set frame mode playback parameters / 设置帧模式播放参数
         
-        self.playing = False
-        print("Playback completed / 播放完成")
+        Args:
+            speed: Servo speed / 舵机速度
+            acceleration: Servo acceleration / 舵机加速度
+            torque: Servo torque / 舵机扭矩
+            frame_interval: Interval between frames in seconds / 帧间隔（秒）
+        """
+        self.playback_servo_speed = speed
+        self.playback_acceleration = acceleration
+        self.playback_torque = torque
+        self.frame_interval = frame_interval
+        
+        print(f"Frame playback settings: Speed={speed}, Accel={acceleration}, Torque={torque}, Interval={frame_interval}s")
+        print(f"帧播放设置：速度={speed}, 加速度={acceleration}, 扭矩={torque}, 间隔={frame_interval}秒")
+        
