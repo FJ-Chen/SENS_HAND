@@ -8,6 +8,9 @@ Servo Manager using SCServo SDK
 from typing import Dict, List, Optional, Callable
 import threading
 import time
+import json
+import os
+from datetime import datetime
 from .servo import Servo
 
 
@@ -36,11 +39,187 @@ class ServoManager:
             })
             self.servos[servo_id] = Servo(servo_id, self.packet_handler, servo_config)
         
+        # 校准相关
+        self.calibration_active = False
+        self.calibration_data = {}
+        self.calibration_thread = None
+        
         # 监控相关
         self.monitoring = False
         self.monitor_thread: Optional[threading.Thread] = None
         self.monitor_callbacks: List[Callable] = []
         self.monitor_interval = 0.05
+        
+        # 加载校准文件
+        self.load_calibration_data()
+    
+    def get_calibration_file_path(self):
+        """获取校准文件路径"""
+        config_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'config')
+        os.makedirs(config_dir, exist_ok=True)
+        return os.path.join(config_dir, 'servo_calibration.json')
+    
+    def load_calibration_data(self):
+        """加载校准数据"""
+        try:
+            file_path = self.get_calibration_file_path()
+            if os.path.exists(file_path):
+                with open(file_path, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+                    
+                # 更新舵机限制
+                for servo_id, limits in data.get('limits', {}).items():
+                    servo_id = int(servo_id)
+                    if servo_id in self.servos:
+                        servo = self.servos[servo_id]
+                        servo.update_limits(limits['min'], limits['max'])
+                
+                print(f"Loaded calibration data from {file_path}")
+                return True
+            else:
+                print("No calibration file found")
+                return False
+        except Exception as e:
+            print(f"Error loading calibration data: {e}")
+            return False
+    
+    def save_calibration_data(self):
+        """保存校准数据"""
+        try:
+            file_path = self.get_calibration_file_path()
+            
+            # 构建校准数据
+            calibration_data = {
+                'timestamp': datetime.now().isoformat(),
+                'limits': {}
+            }
+            
+            for servo_id, data in self.calibration_data.items():
+                if data['positions']:
+                    calibration_data['limits'][servo_id] = {
+                        'min': min(data['positions']),
+                        'max': max(data['positions'])
+                    }
+            
+            # 保存到文件
+            with open(file_path, 'w', encoding='utf-8') as f:
+                json.dump(calibration_data, f, indent=2, ensure_ascii=False)
+            
+            print(f"Saved calibration data to {file_path}")
+            return True
+            
+        except Exception as e:
+            print(f"Error saving calibration data: {e}")
+            return False
+    
+    def start_calibration(self) -> bool:
+        """开始校准"""
+        if self.calibration_active:
+            return False
+        
+        # 初始化校准数据
+        self.calibration_data = {}
+        for servo_id in range(1, 18):
+            self.calibration_data[servo_id] = {
+                'positions': [],
+                'min_pos': float('inf'),
+                'max_pos': float('-inf')
+            }
+        
+        self.calibration_active = True
+        
+        # 启动校准线程
+        self.calibration_thread = threading.Thread(target=self._calibration_worker)
+        self.calibration_thread.daemon = True
+        self.calibration_thread.start()
+        
+        print("Calibration started")
+        return True
+    
+    def stop_calibration(self) -> bool:
+        """停止校准"""
+        if not self.calibration_active:
+            return False
+        
+        self.calibration_active = False
+        
+        # 等待线程结束
+        if self.calibration_thread and self.calibration_thread.is_alive():
+            self.calibration_thread.join(timeout=1.0)
+        
+        # 保存校准结果
+        success = self.save_calibration_data()
+        
+        # 更新舵机限制
+        if success:
+            for servo_id, data in self.calibration_data.items():
+                if data['positions']:
+                    servo = self.servos.get(servo_id)
+                    if servo:
+                        min_pos = min(data['positions'])
+                        max_pos = max(data['positions'])
+                        servo.update_limits(min_pos, max_pos)
+        
+        print("Calibration stopped and saved")
+        return success
+    
+    def _calibration_worker(self):
+        """校准工作线程（10Hz采样）"""
+        while self.calibration_active:
+            try:
+                # 读取所有舵机位置
+                for servo_id, servo in self.servos.items():
+                    if servo.connected:
+                        position = servo.read_present_position()
+                        if position is not None:
+                            # 记录位置
+                            self.calibration_data[servo_id]['positions'].append(position)
+                            
+                            # 更新最大最小值
+                            current_min = self.calibration_data[servo_id]['min_pos']
+                            current_max = self.calibration_data[servo_id]['max_pos']
+                            
+                            self.calibration_data[servo_id]['min_pos'] = min(current_min, position)
+                            self.calibration_data[servo_id]['max_pos'] = max(current_max, position)
+                
+                time.sleep(0.1)  # 10Hz采样
+                
+            except Exception as e:
+                print(f"Calibration error: {e}")
+                time.sleep(0.1)
+    
+    def get_calibration_status(self) -> Dict:
+        """获取校准状态"""
+        status = {
+            'active': self.calibration_active,
+            'data': {}
+        }
+        
+        if self.calibration_active:
+            for servo_id, data in self.calibration_data.items():
+                if data['positions']:
+                    status['data'][servo_id] = {
+                        'samples': len(data['positions']),
+                        'min_pos': data['min_pos'] if data['min_pos'] != float('inf') else None,
+                        'max_pos': data['max_pos'] if data['max_pos'] != float('-inf') else None,
+                        'range': data['max_pos'] - data['min_pos'] if data['min_pos'] != float('inf') else 0
+                    }
+        
+        return status
+    
+    def has_calibration_data(self) -> bool:
+        """检查是否有校准数据"""
+        return os.path.exists(self.get_calibration_file_path())
+    
+    def get_servo_limits(self, servo_id: int) -> Optional[Dict[str, int]]:
+        """获取舵机限制"""
+        servo = self.servos.get(servo_id)
+        if servo:
+            return {
+                'min': servo.min_reg,
+                'max': servo.max_reg
+            }
+        return None
     
     def get_servo(self, servo_id: int) -> Optional[Servo]:
         """获取舵机实例"""

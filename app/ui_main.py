@@ -3,7 +3,7 @@
 """
 Main Window / 主窗口
 PyQt5 main application window with all controls
-PyQt5主应用窗口，包含所有控制
+PyQt5主应用窗口,包含所有控制
 """
 
 import sys
@@ -58,6 +58,9 @@ class MainWindow(QMainWindow):
         # Set window properties / 设置窗口属性
         self.setWindowTitle(T.get('main_window'))
         self.setGeometry(100, 100, 1400, 900)
+
+        # Check calibrate / 检查校准
+        self.calibrating = False
         
     def init_ui(self):
         """Initialize user interface / 初始化用户界面"""
@@ -236,6 +239,7 @@ class MainWindow(QMainWindow):
             servo_widget.position_changed.connect(self.on_servo_position_changed)
             servo_widget.speed_changed.connect(self.on_servo_speed_changed)
             servo_widget.accel_changed.connect(self.on_servo_accel_changed)
+            servo_widget.torque_changed.connect(self.on_servo_torque_changed)
             servo_widget.torque_toggled.connect(self.on_servo_torque_toggled)
             
             row = (i - 1) // 4
@@ -483,6 +487,8 @@ class MainWindow(QMainWindow):
                 
                 # Start feedback update timer / 启动反馈更新定时器
                 self.update_timer.start(50)  # 20Hz
+
+                self.check_calibration_on_startup()
                 
             except Exception as e:
                 QMessageBox.critical(self, T.get('error'), 
@@ -556,30 +562,99 @@ class MainWindow(QMainWindow):
     def calibrate_limits(self):
         """Calibrate servo limits / 校准舵机极限"""
         if not self.servo_manager:
+            QMessageBox.warning(self, T.get('warning'), "请先连接舵机")
             return
         
-        reply = QMessageBox.question(self, T.get('calibrate'),
-                                    T.get('calibration_help') + "\n\n" +
-                                    "Calibration will run for 10 seconds. Continue?\n" +
-                                    "校准将运行10秒。继续吗？",
-                                    QMessageBox.Yes | QMessageBox.No)
+        if not self.calibrating:
+            # 开始校准
+            if not self.servo_manager.has_calibration_data():
+                # 首次校准
+                reply = QMessageBox.question(self, "首次校准", 
+                                        "未找到校准数据，开始首次校准？\n"
+                                        "校准期间请手动移动所有舵机到完整范围。",
+                                        QMessageBox.Yes | QMessageBox.No)
+                if reply != QMessageBox.Yes:
+                    return
+            else:
+                # 重新校准
+                reply = QMessageBox.question(self, "重新校准", 
+                                        "将覆盖现有校准数据，确定继续？\n"
+                                        "校准期间请手动移动所有舵机到完整范围。",
+                                        QMessageBox.Yes | QMessageBox.No)
+                if reply != QMessageBox.Yes:
+                    return
+            
+            # 开始校准
+            if self.servo_manager.start_calibration():
+                self.calibrating = True
+                self.calibrate_btn.setText("完成校准")
+                self.statusBar().showMessage("校准中... 请移动舵机")
+                # 禁用其他控制
+                self.disable_servo_controls()
+                self.log("校准开始 - 请手动移动所有舵机到完整范围")
+        else:
+            # 停止校准
+            if self.servo_manager.stop_calibration():
+                self.calibrating = False
+                self.calibrate_btn.setText(T.get('calibrate'))
+                self.statusBar().showMessage("校准完成")
+                # 更新UI限制
+                self.update_servo_limits()
+                # 重新启用控制
+                self.enable_servo_controls()
+                self.log("校准完成并保存")
+
+    def disable_servo_controls(self):
+        """禁用舵机控制"""
+        for widget in self.servo_widgets.values():
+            widget.set_enabled(False)
+
+    def enable_servo_controls(self):
+        """启用舵机控制"""
+        for servo_id, widget in self.servo_widgets.items():
+            # 只启用已连接的舵机
+            if self.servo_manager:
+                servo = self.servo_manager.get_servo(servo_id)
+                widget.set_enabled(servo and servo.connected)
+
+    def update_servo_limits(self):
+        """更新UI中的舵机限制"""
+        if not self.servo_manager:
+            return
         
-        if reply == QMessageBox.Yes:
-            self.log("Starting calibration... / 开始校准...")
-            limits = self.servo_manager.calibrate_limits(duration=10.0)
-            
-            # Update servo widgets / 更新舵机组件
-            for servo_id, limit_data in limits.items():
-                if servo_id in self.servo_widgets:
-                    self.servo_widgets[servo_id].update_limits(
-                        limit_data['min'], limit_data['max']
-                    )
-            
-            self.log("Calibration complete / 校准完成")
-            
-            # Save config / 保存配置
-            self.servo_manager.save_config('./config/servo_config.yaml')
-            self.log("Configuration saved / 配置已保存")
+        for servo_id, widget in self.servo_widgets.items():
+            limits = self.servo_manager.get_servo_limits(servo_id)
+            if limits:
+                widget.update_limits(limits['min'], limits['max'])
+
+    def check_calibration_on_startup(self):
+        """启动时检查校准文件"""
+        if not self.servo_manager:
+            return
+        
+        if not self.servo_manager.has_calibration_data():
+            reply = QMessageBox.question(self, "需要校准", 
+                                    "未找到校准数据，现在校准吗？\n"
+                                    "不校准将无法使用舵机功能。",
+                                    QMessageBox.Yes | QMessageBox.No)
+            if reply == QMessageBox.Yes:
+                self.calibrate_limits()
+            else:
+                self.disable_servo_controls()
+        else:
+            self.update_servo_limits()
+            self.enable_servo_controls()
+
+    # 添加扭矩值变化处理
+    @pyqtSlot(int, int)
+    def on_servo_torque_changed(self, servo_id: int, torque_value: int):
+        """Handle servo torque value change"""
+        if not self.servo_manager:
+            return
+        
+        servo = self.servo_manager.get_servo(servo_id)
+        if servo and servo.connected:
+            servo.torque_value = torque_value
             
     @pyqtSlot(int, int)
     def on_servo_position_changed(self, servo_id: int, position: int):

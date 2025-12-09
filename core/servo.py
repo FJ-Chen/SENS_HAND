@@ -32,6 +32,7 @@ class Servo:
         self.connected = False
         self.torque_enabled = False
         self.last_position = None
+        self.torque_value = 500  # 默认扭矩值
         
         # 限制值
         self.min_reg = config.get('min_reg', -32767)
@@ -60,7 +61,7 @@ class Servo:
             if comm_result == COMM_SUCCESS:
                 # 设置当前位置，启用扭矩
                 comm_result, error = self.packet_handler.WritePosEx(
-                    self.id, position, 0, 0, 500  # position, speed, accel, torque
+                    self.id, position, 0, 0, self.torque_value  # 使用默认扭矩值
                 )
                 if comm_result == COMM_SUCCESS:
                     self.torque_enabled = True
@@ -84,24 +85,63 @@ class Servo:
             return False
         except Exception:
             return False
-    
-    def set_goal_position(self, position: int, speed: int = 100, accel: int = 50) -> bool:
-        """设置目标位置"""
+        
+    def set_goal_position_with_torque(self, position: int, torque: int, 
+                                    speed: int = 100, accel: int = 50) -> bool:
+        """设置目标位置和扭矩"""
         try:
+            # 检查位置限制
+            if position < self.min_reg or position > self.max_reg:
+                print(f"Servo {self.id}: Position {position} outside limits [{self.min_reg}, {self.max_reg}]")
+                return False
+            
             # 应用配置变换
+            actual_position = position
             if self.invert:
-                position = -position
+                actual_position = -position
             
-            # 限制范围
-            position = max(self.min_reg, min(self.max_reg, position))
+            # 设置扭矩值
+            self.torque_value = torque
             
-            # 使用WritePosEx写入位置
+            # 使用WritePosEx写入位置和扭矩
             comm_result, error = self.packet_handler.WritePosEx(
-                self.id, position, speed, accel, 500  # 默认扭矩500
+                self.id, actual_position, speed, accel, torque
             )
             return comm_result == COMM_SUCCESS
-        except Exception:
+        except Exception as e:
+            print(f"Servo {self.id}: Error setting position with torque: {e}")
             return False
+    
+    def set_goal_position(self, position: int, speed: int = 100, accel: int = 50) -> bool:
+        """设置目标位置（使用当前扭矩值）"""
+        try:
+            # 检查位置限制
+            if position < self.min_reg or position > self.max_reg:
+                print(f"Servo {self.id}: Position {position} outside limits [{self.min_reg}, {self.max_reg}]")
+                # 限制到范围内
+                position = max(self.min_reg, min(self.max_reg, position))
+            
+            # 应用配置变换
+            actual_position = position
+            if self.invert:
+                actual_position = -position
+            
+            # 使用WritePosEx写入位置，使用当前扭矩值
+            comm_result, error = self.packet_handler.WritePosEx(
+                self.id, actual_position, speed, accel, self.torque_value
+            )
+            return comm_result == COMM_SUCCESS
+        except Exception as e:
+            print(f"Servo {self.id}: Error setting position: {e}")
+            return False
+    
+    def set_torque_value(self, torque: int):
+        """设置扭矩值（用于后续位置命令）"""
+        self.torque_value = max(0, min(1000, torque))  # 限制扭矩范围 0-1000
+    
+    def get_torque_value(self) -> int:
+        """获取当前扭矩值"""
+        return self.torque_value
     
     def set_goal_speed(self, speed: int) -> bool:
         """设置目标速度（需要配合位置设置）"""
@@ -150,7 +190,8 @@ class Servo:
             'speed': speed,
             'speed_rpm': speed * 0.732 if speed is not None else None,
             'connected': self.connected,
-            'torque_enabled': self.torque_enabled
+            'torque_enabled': self.torque_enabled,
+            'torque_value': self.torque_value
         }
     
     def update_limits(self, min_pos: int, max_pos: int):
@@ -159,4 +200,12 @@ class Servo:
         self.max_reg = max_pos
         self.config['min_reg'] = min_pos
         self.config['max_reg'] = max_pos
-        
+        print(f"Servo {self.id}: Updated limits to [{min_pos}, {max_pos}]")
+    
+    def is_position_valid(self, position: int) -> bool:
+        """检查位置是否在有效范围内"""
+        return self.min_reg <= position <= self.max_reg
+    
+    def get_position_limits(self) -> tuple:
+        """获取位置限制"""
+        return (self.min_reg, self.max_reg)
