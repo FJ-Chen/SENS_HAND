@@ -60,14 +60,14 @@ class ServoManager:
         return os.path.join(config_dir, 'servo_calibration.json')
     
     def load_calibration_data(self):
-        """加载校准数据"""
+        """加载校准数据 - 不自动移动舵机"""
         try:
             file_path = self.get_calibration_file_path()
             if os.path.exists(file_path):
                 with open(file_path, 'r', encoding='utf-8') as f:
                     data = json.load(f)
                     
-                # 更新舵机限制
+                # 只更新舵机限制，不移动舵机
                 for servo_id, limits in data.get('limits', {}).items():
                     servo_id = int(servo_id)
                     if servo_id in self.servos:
@@ -137,7 +137,7 @@ class ServoManager:
         return True
     
     def stop_calibration(self) -> bool:
-        """停止校准"""
+        """停止校准 - 不自动移动舵机"""
         if not self.calibration_active:
             return False
         
@@ -150,7 +150,7 @@ class ServoManager:
         # 保存校准结果
         success = self.save_calibration_data()
         
-        # 更新舵机限制
+        # 只更新舵机限制，不自动移动
         if success:
             for servo_id, data in self.calibration_data.items():
                 if data['positions']:
@@ -226,9 +226,9 @@ class ServoManager:
         return self.servos.get(servo_id)
     
     def ping_all(self) -> Dict[int, bool]:
-        """检查所有舵机连接（限制超时）"""
+        """检查所有舵机连接（限制超时）- 不自动移动"""
         results = {}
-        for servo_id in range(1, 18):  # 只检查前几个，避免超时
+        for servo_id in range(1, 18):
             servo = self.servos.get(servo_id)
             if servo:
                 results[servo_id] = servo.ping()
@@ -249,7 +249,7 @@ class ServoManager:
         return results
     
     def torque_off_all(self) -> Dict[int, bool]:
-        """所有连接的舵机下电"""
+        """所有连接的舵机下电 - 确保完全断电"""
         results = {}
         for servo_id, servo in self.servos.items():
             if servo.connected:
@@ -261,27 +261,37 @@ class ServoManager:
     
     def set_all_positions(self, positions: Dict[int, int], 
                           speed: Optional[int] = None,
-                          acceleration: Optional[int] = None) -> Dict[int, bool]:
-        """设置多个舵机位置"""
+                          acceleration: Optional[int] = None,
+                          torque: Optional[int] = None) -> Dict[int, bool]:
+        """设置多个舵机位置 - 改进参数处理"""
         results = {}
         default_speed = speed or 100
         default_accel = acceleration or 50
+        default_torque = torque or 500
         
         for servo_id, position in positions.items():
             servo = self.servos.get(servo_id)
             if servo and servo.connected:
-                results[servo_id] = servo.set_goal_position(position, default_speed, default_accel)
+                # 使用指定的扭矩值
+                results[servo_id] = servo.set_goal_position_with_torque(
+                    position, default_torque, default_speed, default_accel
+                )
                 time.sleep(0.003)  # 减少延迟
             else:
                 results[servo_id] = False
         return results
     
     def read_all_positions(self) -> Dict[int, Optional[int]]:
-        """读取所有连接舵机的位置"""
+        """读取所有连接舵机的位置 - 改进错误处理"""
         positions = {}
         for servo_id, servo in self.servos.items():
             if servo.connected:
-                positions[servo_id] = servo.read_present_position()
+                try:
+                    position = servo.read_present_position()
+                    positions[servo_id] = position
+                except Exception:
+                    # 出错时记录None而不是跳过
+                    positions[servo_id] = None
                 time.sleep(0.003)
         return positions
     
