@@ -101,7 +101,7 @@ class MainWindow(QMainWindow):
         
         # Control bar / 控制栏
         self.refresh_ports_btn.setText(T.get('refresh_ports'))
-        if self.serial_manager and self.serial_manager.is_open():
+        if self.serial_manager and self.serial_manager.is_connected():
             self.connect_btn.setText(T.get('disconnect'))
         else:
             self.connect_btn.setText(T.get('connect'))
@@ -132,7 +132,7 @@ class MainWindow(QMainWindow):
         self.gesture_enable_cb.setText(T.get('gesture_enable'))
         
         # Update status labels / 更新状态标签
-        if self.serial_manager and self.serial_manager.is_open():
+        if self.serial_manager and self.serial_manager.is_connected():
             self.statusBar().showMessage(T.get('connected'))
         else:
             self.statusBar().showMessage(T.get('disconnected'))
@@ -443,7 +443,7 @@ class MainWindow(QMainWindow):
     @pyqtSlot()
     def toggle_connection(self):
         """Toggle serial connection / 切换串口连接"""
-        if self.serial_manager is None or not self.serial_manager.is_open():
+        if self.serial_manager is None or not self.serial_manager.is_connected():
             # Connect / 连接
             port_text = self.port_combo.currentText()
             if "No ports" in port_text:
@@ -455,8 +455,8 @@ class MainWindow(QMainWindow):
             baudrate = int(self.baudrate_combo.currentText())
             
             try:
-                self.serial_manager = SerialManager(port, baudrate)
-                self.serial_manager.open()
+                self.serial_manager = SerialManager(baudrate, timeout=1.0)
+                self.serial_manager.connect(port)
                 
                 # Create servo manager / 创建舵机管理器
                 self.servo_manager = ServoManager(self.serial_manager, self.config)
@@ -507,7 +507,7 @@ class MainWindow(QMainWindow):
                 self.servo_manager.torque_off_all()
             
             if self.serial_manager:
-                self.serial_manager.close()
+                self.serial_manager.disconnect()
                 self.serial_manager = None
             
             # Update UI / 更新UI
