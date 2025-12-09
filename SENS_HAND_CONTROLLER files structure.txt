@@ -1,0 +1,46 @@
+SENS_HAND_CONTROLLER/
+│
+├─ app/
+│  ├─ __pycache__/
+│  │   └─ translations.py
+│  │   └─ ui_main.py
+│  │   └─ ui_widgets.py
+│  │
+│  ├─ translations.py
+│  ├─ ui_main.py
+│  ├─ ui_widgets.py
+│  │
+│  ├─ config/
+│  │   ├─ app_config.yaml
+│  │   ├─ servo_calibration.json
+│  │   └─ servo_config.yaml
+│  │
+│  └─ core/
+│      ├─ __pycache__/
+│      │   ├─ feetech_protocol.cpython-310.pyc
+│      │   ├─ recorder.cpython-310.pyc
+│      │   ├─ serial_manager.cpython-310.pyc
+│      │   ├─ servo_manager.cpython-310.pyc
+│      │   └─ servo.cpython-310.pyc
+│      │
+│      ├─ recorder.py
+│      ├─ serial_manager.py
+│      ├─ servo_manager.py
+│      └─ servo.py
+│
+├─ gesture/
+│  ├─ __pycache__/
+│  │    └─ gesture_worker.py
+│  │    └─ mapper.py
+│  │
+│  ├─ gesture_worker.py
+│  └─ mapper.py
+│
+├─ recordings/
+│
+├─ scservo_sdk/
+│
+├─ .gitignore
+├─ README.md
+├─ requirements.txt
+└─ run.py

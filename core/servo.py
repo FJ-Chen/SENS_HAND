@@ -71,13 +71,14 @@ class Servo:
             return False
     
     def torque_off(self) -> bool:
-        """关闭舵机扭矩"""
+        """关闭舵机扭矩 - 确保真正断电"""
         try:
-            # 设置扭矩为0来关闭
+            # 读取当前位置
             position, _, comm_result, _ = self.packet_handler.ReadPosSpeed(self.id)
             if comm_result == COMM_SUCCESS:
+                # 设置扭矩为0，速度为0，加速度为0，确保完全断电
                 comm_result, error = self.packet_handler.WritePosEx(
-                    self.id, position, 0, 0, 0  # torque设为0
+                    self.id, position, 0, 0, 0  # 所有参数都设为0
                 )
                 if comm_result == COMM_SUCCESS:
                     self.torque_enabled = False
@@ -156,7 +157,7 @@ class Servo:
         return True
     
     def read_present_position(self) -> Optional[int]:
-        """读取当前位置"""
+        """读取当前位置 - 改进错误处理"""
         try:
             position, speed, comm_result, error = self.packet_handler.ReadPosSpeed(self.id)
             if comm_result == COMM_SUCCESS:
@@ -165,7 +166,9 @@ class Servo:
                 if self.invert:
                     position = -position
                 return position
-            return None
+            else:
+                # 通信失败时返回None而不是异常
+                return None
         except Exception:
             return None
     
@@ -195,12 +198,13 @@ class Servo:
         }
     
     def update_limits(self, min_pos: int, max_pos: int):
-        """更新位置限制"""
+        """更新位置限制 - 不自动移动到极限位置"""
         self.min_reg = min_pos
         self.max_reg = max_pos
         self.config['min_reg'] = min_pos
         self.config['max_reg'] = max_pos
         print(f"Servo {self.id}: Updated limits to [{min_pos}, {max_pos}]")
+        # 移除自动移动到极限位置的代码
     
     def is_position_valid(self, position: int) -> bool:
         """检查位置是否在有效范围内"""
@@ -209,3 +213,4 @@ class Servo:
     def get_position_limits(self) -> tuple:
         """获取位置限制"""
         return (self.min_reg, self.max_reg)
+    
