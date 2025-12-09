@@ -23,9 +23,15 @@ class ServoManager:
     def __init__(self, serial_manager, config: dict):
         self.serial_manager = serial_manager
         self.packet_handler = serial_manager.packet_handler
+        self.protocol_handler = serial_manager.protocol_handler
         self.config = config
         
-        # 创建17个舵机实例
+        # 校准相关 / Calibration related
+        self.calibration_active = False
+        self.calibration_thread = None
+        self.calibration_data = {}
+        
+        # 创建17个舵机实例 / Create 17 servo instances
         self.servos: Dict[int, Servo] = {}
         servo_configs = config.get('servos', {})
         
@@ -37,21 +43,17 @@ class ServoManager:
                 'scale': 1.0,
                 'invert': False
             })
-            self.servos[servo_id] = Servo(servo_id, self.packet_handler, servo_config)
+            self.servos[servo_id] = Servo(
+                servo_id, 
+                self.packet_handler, 
+                servo_config,
+                self.protocol_handler
+            )
         
-        # 校准相关
-        self.calibration_active = False
-        self.calibration_data = {}
-        self.calibration_thread = None
-        
-        # 监控相关
-        self.monitoring = False
-        self.monitor_thread: Optional[threading.Thread] = None
-        self.monitor_callbacks: List[Callable] = []
-        self.monitor_interval = 0.05
-        
-        # 加载校准文件
+        # 加载已有的校准数据（如果存在）
+        # Load existing calibration data (if exists)
         self.load_calibration_data()
+
     
     def get_calibration_file_path(self):
         """获取校准文件路径"""
@@ -164,7 +166,7 @@ class ServoManager:
         return success
     
     def _calibration_worker(self):
-        """校准工作线程（10Hz采样）"""
+        """校准工作线程(10Hz采样)"""
         while self.calibration_active:
             try:
                 # 读取所有舵机位置

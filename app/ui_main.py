@@ -436,69 +436,6 @@ class MainWindow(QMainWindow):
         else:
             QMessageBox.warning(self, T.get('warning'),
                             "No recording to save / 没有录制可保存")
-
-    @pyqtSlot()
-    def toggle_recording(self):
-        """Toggle recording / 切换录制"""
-        if not self.recorder:
-            return
-        
-        if not self.recorder.recording:
-            # Start recording / 开始录制
-            mode = 'realtime' if self.record_mode_combo.currentIndex() == 0 else 'frame'
-            self.recorder.freq = int(self.freq_combo.currentText())  # 使用选择的频率
-            self.recorder.start_recording(mode)
-            
-            self.record_btn.setText(T.get('stop_record'))
-            self.log(f"Recording started ({mode}) at {self.recorder.freq}Hz / 录制开始 ({mode})，频率{self.recorder.freq}Hz")
-            
-            if mode == 'frame':
-                self.add_frame_btn.setEnabled(True)
-        else:
-            # Stop recording / 停止录制
-            frame_count = self.recorder.stop_recording()
-            
-            self.record_btn.setText(T.get('record'))
-            self.add_frame_btn.setEnabled(False)
-            self.log(f"Recording stopped, {frame_count} frames / 录制停止，{frame_count}帧")
-
-    @pyqtSlot()
-    def toggle_playback(self):
-        """Toggle playback / 切换播放"""
-        if not self.recorder:
-            return
-        
-        if not self.recorder.playing:
-            # Start playback / 开始播放
-            if not self.recorder.frames:
-                QMessageBox.warning(self, T.get('warning'),
-                                "No recording to play / 没有录制可播放")
-                return
-            
-            speed = self.playback_speed.value()
-            repeat_count = self.repeat_count_spinbox.value()
-            
-            # 如果是帧模式，设置播放参数
-            if hasattr(self.recorder, 'mode') and self.recorder.mode == 'frame':
-                frame_speed = self.frame_speed_spinbox.value()
-                frame_accel = self.frame_accel_spinbox.value()
-                frame_torque = self.frame_torque_spinbox.value()
-                frame_interval = self.frame_interval_spinbox.value()
-                
-                self.recorder.set_frame_playback_settings(
-                    frame_speed, frame_accel, frame_torque, frame_interval
-                )
-            
-            self.recorder.start_playback(speed, repeat_count)
-            
-            self.play_btn.setText(T.get('stop_play'))
-            self.log(f"Playback started at {speed}x speed, {repeat_count} repeats / 播放开始，速度{speed}x，重复{repeat_count}次")
-        else:
-            # Stop playback / 停止播放
-            self.recorder.stop_playback()
-            
-            self.play_btn.setText(T.get('play'))
-            self.log("Playback stopped / 播放停止")
         
     def create_gesture_tab(self):
         """Create gesture recognition tab / 创建手势识别标签页"""
@@ -684,19 +621,12 @@ class MainWindow(QMainWindow):
     def torque_on_all(self):
         """
         Enable torque for all servos / 所有舵机上电
-        上电时恢复默认参数 / Restore default parameters on power on
+        仅启用扭矩 / Only enable torque
         """
         if not self.servo_manager:
             return
         
         self.log("Enabling torque for all servos / 所有舵机上电...")
-        
-        # 先恢复所有舵机的默认扭矩值
-        # First restore default torque values for all servos
-        for servo_id, widget in self.servo_widgets.items():
-            if widget.connected:
-                widget.torque_spinbox.setValue(500)  # 恢复默认扭矩 / Restore default torque
-        
         results = self.servo_manager.torque_on_all()
         
         success_count = sum(1 for v in results.values() if v)
@@ -704,11 +634,12 @@ class MainWindow(QMainWindow):
         
         for servo_id, success in results.items():
             if success and servo_id in self.servo_widgets:
-                self.servo_widgets[servo_id].torque_button.setChecked(True)
-                self.servo_widgets[servo_id].update_torque_button_text(True)
+                widget = self.servo_widgets[servo_id]
+                widget.torque_button.setChecked(True)
+                widget.update_torque_button_text(True)
                 # 启用位置控制 / Enable position controls
-                self.servo_widgets[servo_id].position_slider.setEnabled(True)
-                self.servo_widgets[servo_id].position_spinbox.setEnabled(True)
+                widget.position_slider.setEnabled(True)
+                widget.position_spinbox.setEnabled(True)
 
     @pyqtSlot()
     def torque_off_all(self):
@@ -866,7 +797,7 @@ class MainWindow(QMainWindow):
     def on_servo_torque_toggled(self, servo_id: int, enabled: bool):
         """
         Handle servo torque toggle / 处理舵机扭矩切换
-        上电时恢复默认扭矩值 / Restore default torque when powering on
+        仅启用/禁用扭矩，不改变其他参数 / Only enable/disable torque
         """
         if not self.servo_manager:
             return
@@ -874,15 +805,12 @@ class MainWindow(QMainWindow):
         servo = self.servo_manager.get_servo(servo_id)
         if servo and servo.connected:
             if enabled:
-                # 上电：恢复默认扭矩值 / Power on: restore default torque
-                widget = self.servo_widgets.get(servo_id)
-                if widget:
-                    widget.torque_spinbox.setValue(500)  # 恢复默认扭矩 / Restore default torque
                 servo.torque_on()
+                self.log(f"Servo {servo_id} torque enabled / 舵机{servo_id}已上电")
             else:
-                # 下电：扭矩设为0 / Power off: set torque to 0
                 servo.torque_off()
-                
+                self.log(f"Servo {servo_id} torque disabled / 舵机{servo_id}已下电")
+                    
     @pyqtSlot()
     def update_servo_feedback(self):
         """Update servo feedback display / 更新舵机反馈显示"""
