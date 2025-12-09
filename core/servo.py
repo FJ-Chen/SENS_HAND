@@ -53,15 +53,21 @@ class Servo:
             return False
     
     def torque_on(self) -> bool:
-        """打开舵机扭矩"""
+        """
+        打开舵机扭矩 - 使用默认参数
+        Enable servo torque - with default parameters
+        """
         try:
-            # 使用WritePosEx的torque参数来控制扭矩
-            # 先读取当前位置，然后设置一个小的扭矩值来启用
+            # 读取当前位置 / Read current position
             position, _, comm_result, _ = self.packet_handler.ReadPosSpeed(self.id)
             if comm_result == COMM_SUCCESS:
-                # 设置当前位置，启用扭矩
+                # 上电时恢复默认扭矩值 / Restore default torque on power on
+                self.torque_value = 500  # 默认扭矩 / Default torque
+                
+                # 设置当前位置，启用扭矩，使用默认参数
+                # Set current position, enable torque with default parameters
                 comm_result, error = self.packet_handler.WritePosEx(
-                    self.id, position, 0, 0, self.torque_value  # 使用默认扭矩值
+                    self.id, position, 100, 50, self.torque_value  # 默认速度100，加速度50 / Default speed=100, accel=50
                 )
                 if comm_result == COMM_SUCCESS:
                     self.torque_enabled = True
@@ -71,17 +77,22 @@ class Servo:
             return False
     
     def torque_off(self) -> bool:
-        """关闭舵机扭矩 - 确保真正断电"""
+        """
+        关闭舵机扭矩 - 确保真正断电
+        Disable servo torque - ensure complete power off
+        """
         try:
-            # 读取当前位置
+            # 读取当前位置 / Read current position
             position, _, comm_result, _ = self.packet_handler.ReadPosSpeed(self.id)
             if comm_result == COMM_SUCCESS:
                 # 设置扭矩为0，速度为0，加速度为0，确保完全断电
+                # Set torque=0, speed=0, accel=0 to ensure complete power off
                 comm_result, error = self.packet_handler.WritePosEx(
-                    self.id, position, 0, 0, 0  # 所有参数都设为0
+                    self.id, position, 0, 0, 0  # 所有参数都设为0 / All parameters set to 0
                 )
                 if comm_result == COMM_SUCCESS:
                     self.torque_enabled = False
+                    self.torque_value = 0  # 重置扭矩值 / Reset torque value
                     return True
             return False
         except Exception:

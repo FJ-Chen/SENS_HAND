@@ -682,11 +682,21 @@ class MainWindow(QMainWindow):
             
     @pyqtSlot()
     def torque_on_all(self):
-        """Enable torque for all servos / 所有舵机上电"""
+        """
+        Enable torque for all servos / 所有舵机上电
+        上电时恢复默认参数 / Restore default parameters on power on
+        """
         if not self.servo_manager:
             return
         
         self.log("Enabling torque for all servos / 所有舵机上电...")
+        
+        # 先恢复所有舵机的默认扭矩值
+        # First restore default torque values for all servos
+        for servo_id, widget in self.servo_widgets.items():
+            if widget.connected:
+                widget.torque_spinbox.setValue(500)  # 恢复默认扭矩 / Restore default torque
+        
         results = self.servo_manager.torque_on_all()
         
         success_count = sum(1 for v in results.values() if v)
@@ -696,10 +706,16 @@ class MainWindow(QMainWindow):
             if success and servo_id in self.servo_widgets:
                 self.servo_widgets[servo_id].torque_button.setChecked(True)
                 self.servo_widgets[servo_id].update_torque_button_text(True)
-                
+                # 启用位置控制 / Enable position controls
+                self.servo_widgets[servo_id].position_slider.setEnabled(True)
+                self.servo_widgets[servo_id].position_spinbox.setEnabled(True)
+
     @pyqtSlot()
     def torque_off_all(self):
-        """Disable torque for all servos / 所有舵机下电"""
+        """
+        Disable torque for all servos / 所有舵机下电
+        下电时禁用位置控制 / Disable position controls when powered off
+        """
         if not self.servo_manager:
             return
         
@@ -711,8 +727,12 @@ class MainWindow(QMainWindow):
         
         for servo_id, success in results.items():
             if success and servo_id in self.servo_widgets:
-                self.servo_widgets[servo_id].torque_button.setChecked(False)
-                self.servo_widgets[servo_id].update_torque_button_text(False)
+                widget = self.servo_widgets[servo_id]
+                widget.torque_button.setChecked(False)
+                widget.update_torque_button_text(False)
+                # 禁用位置控制 / Disable position controls
+                widget.position_slider.setEnabled(False)
+                widget.position_spinbox.setEnabled(False)
                 
     @pyqtSlot()
     def calibrate_limits(self):
@@ -844,15 +864,23 @@ class MainWindow(QMainWindow):
             
     @pyqtSlot(int, bool)
     def on_servo_torque_toggled(self, servo_id: int, enabled: bool):
-        """Handle servo torque toggle / 处理舵机扭矩切换"""
+        """
+        Handle servo torque toggle / 处理舵机扭矩切换
+        上电时恢复默认扭矩值 / Restore default torque when powering on
+        """
         if not self.servo_manager:
             return
         
         servo = self.servo_manager.get_servo(servo_id)
         if servo and servo.connected:
             if enabled:
+                # 上电：恢复默认扭矩值 / Power on: restore default torque
+                widget = self.servo_widgets.get(servo_id)
+                if widget:
+                    widget.torque_spinbox.setValue(500)  # 恢复默认扭矩 / Restore default torque
                 servo.torque_on()
             else:
+                # 下电：扭矩设为0 / Power off: set torque to 0
                 servo.torque_off()
                 
     @pyqtSlot()
@@ -881,11 +909,12 @@ class MainWindow(QMainWindow):
         if not self.recorder.recording:
             # Start recording / 开始录制
             mode = 'realtime' if self.record_mode_combo.currentIndex() == 0 else 'frame'
-            self.recorder.freq = self.freq_spinbox.value()
+            # 修改：使用 freq_combo 而不是 freq_spinbox
+            self.recorder.freq = int(self.freq_combo.currentText())  # 使用选择的频率
             self.recorder.start_recording(mode)
             
             self.record_btn.setText(T.get('stop_record'))
-            self.log(f"Recording started ({mode}) / 录制开始 ({mode})")
+            self.log(f"Recording started ({mode}) at {self.recorder.freq}Hz / 录制开始 ({mode})，频率{self.recorder.freq}Hz")
             
             if mode == 'frame':
                 self.add_frame_btn.setEnabled(True)
@@ -896,7 +925,7 @@ class MainWindow(QMainWindow):
             self.record_btn.setText(T.get('record'))
             self.add_frame_btn.setEnabled(False)
             self.log(f"Recording stopped, {frame_count} frames / 录制停止，{frame_count}帧")
-            
+
     @pyqtSlot()
     def add_recording_frame(self):
         """Add frame to recording / 添加帧到录制"""

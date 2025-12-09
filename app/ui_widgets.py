@@ -216,7 +216,18 @@ class ServoControlWidget(QFrame):
         if connected:
             self.status_label.setText(T.get('online'))
             self.status_label.setStyleSheet("color: green;")
-            self.set_enabled(True)
+            # 连接后默认不启用位置控制（需要先上电）
+            # Position control disabled by default after connection (need to enable torque first)
+            self.speed_slider.setEnabled(True)
+            self.speed_spinbox.setEnabled(True)
+            self.accel_slider.setEnabled(True)
+            self.accel_spinbox.setEnabled(True)
+            self.torque_spinbox.setEnabled(True)
+            self.torque_button.setEnabled(True)
+            # 位置控制需要扭矩启用后才能使用
+            # Position controls require torque to be enabled
+            self.position_slider.setEnabled(False)
+            self.position_spinbox.setEnabled(False)
         else:
             self.status_label.setText(T.get('offline'))
             self.status_label.setStyleSheet("color: red;")
@@ -329,9 +340,18 @@ class ServoControlWidget(QFrame):
         self.torque_changed.emit(self.servo_id, value)
         
     def on_torque_toggled(self):
-        """Handle torque button toggle / 处理扭矩按钮切换"""
+        """
+        Handle torque button toggle / 处理扭矩按钮切换
+        下电时禁用位置控制 / Disable position control when torque off
+        """
         enabled = self.torque_button.isChecked()
         self.update_torque_button_text(enabled)
+        
+        # 根据扭矩状态启用/禁用位置控制
+        # Enable/disable position controls based on torque state
+        self.position_slider.setEnabled(enabled and self.connected)
+        self.position_spinbox.setEnabled(enabled and self.connected)
+        
         self.torque_toggled.emit(self.servo_id, enabled)
         
     def update_torque_button_text(self, enabled: bool):
