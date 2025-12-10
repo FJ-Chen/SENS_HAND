@@ -78,6 +78,7 @@ class ServoControlWidget(QFrame):
         self.position_slider.setMinimum(self.min_position)
         self.position_slider.setMaximum(self.max_position)
         self.position_slider.setValue(0)
+        self.position_slider.wheelEvent = lambda event: None 
         self.position_slider.valueChanged.connect(self.on_position_changed)
         pos_layout.addWidget(self.position_slider)
         

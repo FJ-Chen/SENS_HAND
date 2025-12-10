@@ -252,165 +252,209 @@ class MainWindow(QMainWindow):
         tab.setLayout(layout)
         self.tabs.addTab(tab, T.get('servo_id'))
         
-    # 在create_recording_tab方法中修改录制频率选择
     def create_recording_tab(self):
-        """Create recording tab / 创建录制标签页"""
+        """Create recording tab"""
         tab = QWidget()
         layout = QVBoxLayout()
         
-        # Recording controls / 录制控制
-        self.recording_group = QGroupBox(T.get('recording'))
+        # ========== 录制控制 ==========
+        self.recording_group = QGroupBox("录制 / Recording")
         control_layout = QVBoxLayout()
         
-        # Mode selection / 模式选择
+        # 模式选择
         mode_layout = QHBoxLayout()
-        mode_layout.addWidget(QLabel(T.get('mode_frame') + " / " + T.get('mode_realtime') + ":"))
-        
+        mode_layout.addWidget(QLabel("模式 / Mode:"))
         self.record_mode_combo = QComboBox()
-        self.record_mode_combo.addItems([T.get('mode_realtime'), T.get('mode_frame')])
+        self.record_mode_combo.addItems(["实时 / Realtime", "帧 / Frame"])
         mode_layout.addWidget(self.record_mode_combo)
-        
         mode_layout.addStretch()
         control_layout.addLayout(mode_layout)
         
-        # Recording frequency selection / 录制频率选择
+        # 录制频率
         freq_layout = QHBoxLayout()
-        freq_layout.addWidget(QLabel("Freq (Hz) / 频率:"))
-        
+        freq_layout.addWidget(QLabel("频率 / Freq (Hz):"))
         self.freq_combo = QComboBox()
         self.freq_combo.addItems(['10', '20', '30', '40'])
         self.freq_combo.setCurrentText('20')
         freq_layout.addWidget(self.freq_combo)
-        
         freq_layout.addStretch()
         control_layout.addLayout(freq_layout)
         
-        # Recording buttons / 录制按钮
+        # 录制按钮
         btn_layout = QHBoxLayout()
-        
-        self.record_btn = QPushButton(T.get('record'))
+        self.record_btn = QPushButton("开始录制 / Start Recording")
         self.record_btn.clicked.connect(self.toggle_recording)
         btn_layout.addWidget(self.record_btn)
         
-        self.add_frame_btn = QPushButton(T.get('add_frame'))
+        self.add_frame_btn = QPushButton("添加帧 / Add Frame")
         self.add_frame_btn.clicked.connect(self.add_recording_frame)
         self.add_frame_btn.setEnabled(False)
         btn_layout.addWidget(self.add_frame_btn)
         
-        # 改为"完成并保存录制"
-        self.save_record_btn = QPushButton("完成并保存录制 / Finish & Save")
+        self.save_record_btn = QPushButton("完成并保存 / Finish & Save")
         self.save_record_btn.clicked.connect(self.finish_and_save_recording)
         btn_layout.addWidget(self.save_record_btn)
-        
-        self.load_record_btn = QPushButton(T.get('load_recording'))
-        self.load_record_btn.clicked.connect(self.load_recording)
-        btn_layout.addWidget(self.load_record_btn)
         
         control_layout.addLayout(btn_layout)
         self.recording_group.setLayout(control_layout)
         layout.addWidget(self.recording_group)
         
-        # Playback controls / 播放控制
-        self.playback_group = QGroupBox(T.get('play'))
+        # ========== 播放控制 ==========
+        self.playback_group = QGroupBox("播放 / Playback")
         playback_layout = QVBoxLayout()
         
-        # Playback speed / 播放速度
-        speed_layout = QHBoxLayout()
-        speed_layout.addWidget(QLabel(T.get('playback_speed') + ":"))
+        # 选择文件
+        self.select_file_btn = QPushButton("选择播放文件 / Select File")
+        self.select_file_btn.clicked.connect(self.select_playback_file)
+        playback_layout.addWidget(self.select_file_btn)
         
-        self.playback_speed = QDoubleSpinBox()
-        self.playback_speed.setMinimum(0.1)
-        self.playback_speed.setMaximum(5.0)
-        self.playback_speed.setSingleStep(0.1)
-        self.playback_speed.setValue(1.0)
-        self.playback_speed.wheelEvent = lambda event: None  # 禁用滚轮
-        speed_layout.addWidget(self.playback_speed)
+        # 已选文件显示
+        self.selected_file_label = QLabel("未选择文件 / No file selected")
+        self.selected_file_label.setStyleSheet(
+            "color: gray; padding: 8px; border: 1px solid #ccc; border-radius: 4px; background: #f9f9f9;"
+        )
+        self.selected_file_label.setWordWrap(True)
+        playback_layout.addWidget(self.selected_file_label)
         
-        speed_layout.addStretch()
-        playback_layout.addLayout(speed_layout)
-        
-        # Repeat count / 重复次数
+        # 重复次数
         repeat_layout = QHBoxLayout()
-        repeat_layout.addWidget(QLabel("重复次数 / Repeat Count:"))
-        
+        repeat_layout.addWidget(QLabel("重复 / Repeat:"))
         self.repeat_count_spinbox = QSpinBox()
-        self.repeat_count_spinbox.setMinimum(1)
-        self.repeat_count_spinbox.setMaximum(999)
+        self.repeat_count_spinbox.setRange(1, 999)
         self.repeat_count_spinbox.setValue(1)
-        self.repeat_count_spinbox.wheelEvent = lambda event: None  # 禁用滚轮
+        self.repeat_count_spinbox.wheelEvent = lambda event: None
+        self.repeat_count_spinbox.setFocusPolicy(Qt.StrongFocus)
         repeat_layout.addWidget(self.repeat_count_spinbox)
-        
         repeat_layout.addStretch()
         playback_layout.addLayout(repeat_layout)
         
-        # Frame mode specific settings / 帧模式专用设置
-        self.frame_settings_group = QGroupBox("帧模式播放设置 / Frame Mode Settings")
-        frame_settings_layout = QVBoxLayout()
+        # 帧模式设置
+        self.frame_settings_group = QGroupBox("帧模式设置 / Frame Settings")
+        frame_layout = QVBoxLayout()
         
-        # Servo speed / 舵机速度
-        frame_speed_layout = QHBoxLayout()
-        frame_speed_layout.addWidget(QLabel("舵机速度 / Servo Speed:"))
+        # 速度
+        speed_layout = QHBoxLayout()
+        speed_layout.addWidget(QLabel("速度 / Speed:"))
         self.frame_speed_spinbox = QSpinBox()
-        self.frame_speed_spinbox.setMinimum(1)
-        self.frame_speed_spinbox.setMaximum(1000)
+        self.frame_speed_spinbox.setRange(1, 1000)
         self.frame_speed_spinbox.setValue(500)
         self.frame_speed_spinbox.wheelEvent = lambda event: None
-        frame_speed_layout.addWidget(self.frame_speed_spinbox)
-        frame_settings_layout.addLayout(frame_speed_layout)
+        self.frame_speed_spinbox.setFocusPolicy(Qt.StrongFocus)
+        speed_layout.addWidget(self.frame_speed_spinbox)
+        frame_layout.addLayout(speed_layout)
         
-        # Servo acceleration / 舵机加速度
-        frame_accel_layout = QHBoxLayout()
-        frame_accel_layout.addWidget(QLabel("舵机加速度 / Servo Acceleration:"))
+        # 加速度
+        accel_layout = QHBoxLayout()
+        accel_layout.addWidget(QLabel("加速度 / Accel:"))
         self.frame_accel_spinbox = QSpinBox()
-        self.frame_accel_spinbox.setMinimum(0)
-        self.frame_accel_spinbox.setMaximum(255)
+        self.frame_accel_spinbox.setRange(0, 255)
         self.frame_accel_spinbox.setValue(50)
         self.frame_accel_spinbox.wheelEvent = lambda event: None
-        frame_accel_layout.addWidget(self.frame_accel_spinbox)
-        frame_settings_layout.addLayout(frame_accel_layout)
+        self.frame_accel_spinbox.setFocusPolicy(Qt.StrongFocus)
+        accel_layout.addWidget(self.frame_accel_spinbox)
+        frame_layout.addLayout(accel_layout)
         
-        # Servo torque / 舵机扭矩
-        frame_torque_layout = QHBoxLayout()
-        frame_torque_layout.addWidget(QLabel("舵机扭矩 / Servo Torque:"))
+        # 扭矩
+        torque_layout = QHBoxLayout()
+        torque_layout.addWidget(QLabel("扭矩 / Torque:"))
         self.frame_torque_spinbox = QSpinBox()
-        self.frame_torque_spinbox.setMinimum(0)
-        self.frame_torque_spinbox.setMaximum(1000)
+        self.frame_torque_spinbox.setRange(0, 1000)
         self.frame_torque_spinbox.setValue(700)
         self.frame_torque_spinbox.wheelEvent = lambda event: None
-        frame_torque_layout.addWidget(self.frame_torque_spinbox)
-        frame_settings_layout.addLayout(frame_torque_layout)
+        self.frame_torque_spinbox.setFocusPolicy(Qt.StrongFocus)
+        torque_layout.addWidget(self.frame_torque_spinbox)
+        frame_layout.addLayout(torque_layout)
         
-        # Frame interval / 帧间隔
-        frame_interval_layout = QHBoxLayout()
-        frame_interval_layout.addWidget(QLabel("帧间隔(秒) / Frame Interval(s):"))
+        # 帧间隔
+        interval_layout = QHBoxLayout()
+        interval_layout.addWidget(QLabel("间隔(秒) / Interval:"))
         self.frame_interval_spinbox = QDoubleSpinBox()
-        self.frame_interval_spinbox.setMinimum(0.1)
-        self.frame_interval_spinbox.setMaximum(10.0)
+        self.frame_interval_spinbox.setRange(0.1, 10.0)
         self.frame_interval_spinbox.setSingleStep(0.1)
         self.frame_interval_spinbox.setValue(1.0)
         self.frame_interval_spinbox.wheelEvent = lambda event: None
-        frame_interval_layout.addWidget(self.frame_interval_spinbox)
-        frame_settings_layout.addLayout(frame_interval_layout)
+        self.frame_interval_spinbox.setFocusPolicy(Qt.StrongFocus)
+        interval_layout.addWidget(self.frame_interval_spinbox)
+        frame_layout.addLayout(interval_layout)
         
-        self.frame_settings_group.setLayout(frame_settings_layout)
+        self.frame_settings_group.setLayout(frame_layout)
         playback_layout.addWidget(self.frame_settings_group)
         
-        # Playback buttons / 播放按钮
-        play_btn_layout = QHBoxLayout()
-        
-        self.play_btn = QPushButton(T.get('play'))
+        # 播放按钮
+        self.play_btn = QPushButton("开始播放 / Start Playback")
         self.play_btn.clicked.connect(self.toggle_playback)
-        play_btn_layout.addWidget(self.play_btn)
-        
-        play_btn_layout.addStretch()
-        playback_layout.addLayout(play_btn_layout)
+        self.play_btn.setEnabled(False)
+        playback_layout.addWidget(self.play_btn)
         
         self.playback_group.setLayout(playback_layout)
         layout.addWidget(self.playback_group)
         
         layout.addStretch()
         tab.setLayout(layout)
-        self.tabs.addTab(tab, T.get('recording'))
+        self.tabs.addTab(tab, "录制 / Recording")
+
+
+    def select_playback_file(self):
+        """选择播放文件"""
+        from PyQt5.QtWidgets import QFileDialog
+        
+        filename, _ = QFileDialog.getOpenFileName(
+            self, "选择播放文件 / Select File", 
+            "./recordings",
+            "JSON Files (*.json);;All Files (*)"
+        )
+        
+        if filename and self.recorder:
+            if self.recorder.select_file(filename):
+                info = self.recorder.get_selected_file_info()
+                if info:
+                    text = (
+                        f"📁 {info['name']}\n"
+                        f"模式: {info['mode']} | 帧数: {info['frame_count']} | "
+                        f"时长: {info['duration']:.2f}s"
+                    )
+                    self.selected_file_label.setText(text)
+                    self.selected_file_label.setStyleSheet(
+                        "color: #2e7d32; padding: 8px; border: 1px solid #4caf50; "
+                        "border-radius: 4px; background: #e8f5e9;"
+                    )
+                    self.play_btn.setEnabled(True)
+                    self.log(f"Selected: {info['name']}")
+            else:
+                self.selected_file_label.setText("加载失败 / Load failed")
+                self.selected_file_label.setStyleSheet(
+                    "color: #c62828; padding: 8px; border: 1px solid #ef5350; "
+                    "border-radius: 4px; background: #ffebee;"
+                )
+                self.play_btn.setEnabled(False)
+
+
+    def toggle_playback(self):
+        """切换播放"""
+        if not self.recorder:
+            return
+        
+        if not self.recorder.playing:
+            if not self.recorder.frames:
+                from PyQt5.QtWidgets import QMessageBox
+                QMessageBox.warning(self, "提示", "请先选择播放文件")
+                return
+            
+            # 更新设置
+            self.recorder.set_frame_playback_settings(
+                speed=self.frame_speed_spinbox.value(),
+                acceleration=self.frame_accel_spinbox.value(),
+                torque=self.frame_torque_spinbox.value(),
+                frame_interval=self.frame_interval_spinbox.value()
+            )
+            
+            if self.recorder.start_playback(self.repeat_count_spinbox.value()):
+                self.play_btn.setText("停止播放 / Stop")
+                self.select_file_btn.setEnabled(False)
+        else:
+            self.recorder.stop_playback()
+            self.play_btn.setText("开始播放 / Start Playback")
+            self.select_file_btn.setEnabled(True)
 
     # 添加新的方法
     @pyqtSlot()
@@ -459,6 +503,7 @@ class MainWindow(QMainWindow):
         self.sensitivity_slider.setMinimum(1)
         self.sensitivity_slider.setMaximum(10)
         self.sensitivity_slider.setValue(5)
+        self.sensitivity_slider.wheelEvent = lambda event: None  # 禁用滚轮
         self.sensitivity_slider.valueChanged.connect(self.on_sensitivity_changed)
         sens_layout.addWidget(self.sensitivity_slider)
         
@@ -490,7 +535,7 @@ class MainWindow(QMainWindow):
         layout.addStretch()
         tab.setLayout(layout)
         self.tabs.addTab(tab, T.get('gesture'))
-        
+            
     def create_log_tab(self):
         """Create log tab / 创建日志标签页"""
         tab = QWidget()
@@ -898,31 +943,6 @@ class MainWindow(QMainWindow):
                 QMessageBox.critical(self, T.get('error'),
                                    "Failed to load recording / 加载录制失败")
                 
-    @pyqtSlot()
-    def toggle_playback(self):
-        """Toggle playback / 切换播放"""
-        if not self.recorder:
-            return
-        
-        if not self.recorder.playing:
-            # Start playback / 开始播放
-            if not self.recorder.frames:
-                QMessageBox.warning(self, T.get('warning'),
-                                  "No recording to play / 没有录制可播放")
-                return
-            
-            speed = self.playback_speed.value()
-            self.recorder.start_playback(speed)
-            
-            self.play_btn.setText(T.get('stop_play'))
-            self.log(f"Playback started at {speed}x / 播放开始，速度{speed}x")
-        else:
-            # Stop playback / 停止播放
-            self.recorder.stop_playback()
-            
-            self.play_btn.setText(T.get('play'))
-            self.log("Playback stopped / 播放停止")
-            
     @pyqtSlot(int)
     def toggle_gesture_recognition(self, state: int):
         """Toggle gesture recognition / 切换手势识别"""
